@@ -1,0 +1,18 @@
+# Reverse proxy for prod. Replace karkov.example.com with your domain — Caddy will
+# automatically provision Let's Encrypt certificates.
+karkov.example.com {
+    encode gzip zstd
+
+    # API + uploads -> backend
+    @api {
+        path /api/* /healthz /uploads/*
+    }
+    handle @api {
+        reverse_proxy backend:8000
+    }
+
+    # Everything else -> Next.js
+    handle {
+        reverse_proxy frontend:3000
+    }
+}

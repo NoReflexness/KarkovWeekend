@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-karkov}
+      POSTGRES_USER: ${POSTGRES_USER:-karkov}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-karkov}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-karkov}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://karkov:karkov@db:5432/karkov}
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-please-32chars-min!!}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@karkov.example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1234}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrator}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    volumes:
+      - uploads:/app/uploads
+    ports:
+      - "8000:8000"
+
+  # The frontend container is opt-in. For day-to-day development, run
+  # `npm run dev` from ./frontend on the host (port 3000) — the backend's
+  # CORS_ORIGINS already includes http://localhost:3000.
+  # To run the production frontend image alongside the rest of the stack:
+  #   docker compose --profile docker-frontend up
+  frontend:
+    profiles: ["docker-frontend"]
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "3000:3000"
+
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+
+volumes:
+  db_data:
+  uploads:

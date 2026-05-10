@@ -1,0 +1,27 @@
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+backend/karkov.db
+backend/karkov.db-journal
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Node / Next
+node_modules/
+.next/
+.turbo/
+npm-debug.log*
+frontend/playwright-report/
+frontend/test-results/
+frontend/e2e/__screens__/
+
+# Editor
+.DS_Store
+.idea/
+.vscode/

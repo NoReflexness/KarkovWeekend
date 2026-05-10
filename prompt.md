@@ -1,0 +1,295 @@
+# Karkov Weekend — Product Spec
+
+A community planner for a small group of Danish families that go on a weekend
+trip together once a year. Solves the classic "who goes when, who cooks what,
+who paid what, who owes whom" problem with a fair, transparent, low-friction
+tool.
+
+---
+
+## 1. Vision & principles
+
+- Built from SOLID principles, modern best practices and TDD.
+- Easy to maintain and extend — features live behind small services, not
+  god-classes.
+- Tested locally and end-to-end before each milestone.
+- Mobile-first, light/dark mode (auto-detected from the browser), smooth
+  animations, premium UX, "liquid glass" feel.
+- Optimized for mobile, tablet and desktop.
+- Danish UI throughout — `frontend/src/i18n/da.ts` is the single source of all
+  user-facing copy.
+- Repo on GitHub.
+
+## 2. Tech stack
+
+| Layer    | Choice                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| Backend  | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic (+ dev schema helper) · Pydantic v2 · pytest           |
+| DB       | PostgreSQL 16 (SQLite for unit tests)                                                                 |
+| Auth     | Self-hosted JWT in httpOnly cookies (access 7d, refresh 30d), bcrypt                                  |
+| Frontend | Next.js 16 (App Router) · TypeScript · Tailwind v4 · shadcn/ui · TanStack Query · Vitest · Playwright |
+| Email    | DB outbox (always on) + optional SMTP (configurable via env)                                          |
+| Scrape   | httpx + BeautifulSoup, cached on the event                                                            |
+| Deploy   | Docker Compose (dev) · Docker Compose + Caddy reverse-proxy (prod)                                    |
+
+## 3. Roles & access
+
+- **Admin** — full control. Creates families, invites parents, can promote a
+  parent to admin or demote (cannot demote the last admin), creates and edits
+  events, manages global pricing rules, manages expense categories, can change
+  who paid an expense.
+- **Parent** — standard adult user. Belongs to one family.
+- **Child** — optional login. Can sign in and toggle attendance / chors /
+  activities, but cannot see or edit the budget.
+
+## 4. Identity
+
+### 4.1 Families
+
+- Admin creates family units with a name and optional profile picture.
+- A user belongs to exactly one family.
+- Admin can build a complete family unit (parents + children) without sending
+  invitations; a separate "Send invitationer" button fires the emails when the
+  setup is ready.
+- Pending invitations are listed per family, can be cancelled, or resent in
+  bulk.
+- Admin can edit family name, parent, and child profiles.
+- Admin can delete a family / user / child (with confirmation).
+- Admin can promote a parent to admin and demote back, except the very last
+  admin.
+
+### 4.2 Users
+
+- Email/password login over JWT cookies (access + refresh tokens).
+- Invite-based registration: parent receives an email link with a one-time
+  token, sets name + password.
+- Profile page: name, email, profile picture, birthdate.
+- Users can edit their own profile and change their password.
+- Users can opt-in/out of email notifications and are prompted on first login
+  by a one-shot modal; the choice is editable later from their profile.
+
+### 4.3 Children (kids)
+
+- Added by their parent or by an admin.
+- Optionally given an email + password so they can log in.
+- A parent can manage all data on their kids (name, birthdate, password,
+  email, picture).
+- Children "share" between parents inside the same family unit (a family has
+  one or more parents and their children).
+
+### 4.4 Age brackets (admin-tunable on the settings page)
+
+- **Baby** — 0 to N₁ years (default 0–2). Don't count for beds and don't pay.
+- **Kid** — N₁+1 to N₂ years (default 3–13). Half price on bed/food/per-night
+  categories. The summerhouse needs a bed for each kid.
+- **Teen / adult** — N₂+1 and up (default 14+). Full price.
+- The bracket is computed from the user's birthdate at the event start date
+  and shown as a Baby / Barn / Teenager / Voksen badge throughout the app
+  (family page, attendees strip, etc).
+
+## 5. Events
+
+- One main event per year, but the data model handles many.
+- Admin creates an event with name, description, optional address, optional
+  Google-Maps URL, optional summerhouse URL, date range, optional bed count
+  and optional host.
+- An event can be created without a summerhouse — adding a summerhouse URL
+  later is a notifiable event posted to the global chat.
+- Status flow: `planlagt` → `aabent` (open for sign-ups) → `låst` (attendance
+  locked) → `afsluttet` (budget closed). Host or admin moves it forward.
+- The host or admin can edit any event detail inline from a dialog on the
+  event detail page (name, dates, address, links, beds, host).
+- The home page shows the next upcoming event with a quick-action; if there
+  is none, admins see "Opret arrangement" and others see "Alle arrangementer".
+- An events list page shows all events with status badges and a brief summary.
+- A "Plan næste år" admin button creates next year's event pre-filled with
+  date+1y, same length, same host, copied address & URLs (leap-year safe).
+
+### 5.1 Event detail header
+
+- Title, date range, address (truncated), host with crown icon.
+- "Ledige opgaver: N" line — clickable, jumps to the Chors tab. Shows
+  "Alle opgaver er taget" when empty.
+- Mini Google-Maps thumbnail (clickable — opens the full map in a new tab).
+- Status badge, host/admin actions (open / lock / finalize), Edit dialog,
+  Plan-next-year button.
+- Attendees strip grouped by family with avatar pills and a "X/Y dage" badge
+  when attendance is partial.
+- Tabs: Days, Chors, Activities, Budget (Budget hidden for children).
+
+### 5.2 Days & attendance
+
+- An event auto-builds one EventDay per day in the date range.
+- Editing the date range adds/removes days and rebuilds chors as needed.
+- Each parent toggles attendance per day (or in bulk for many days).
+- Their children follow them automatically when added.
+- A bed-demand widget shows peak occupancy across the days vs the event's
+  bed count, with a green/amber/red bar (babies excluded). The faster the
+  users sign up, the faster the host can find a place that fits everyone.
+
+### 5.3 Chors (opgaver)
+
+- A fixed grid of 6 chors per day:
+  `(morgenmad, frokost, aftensmad) × (forberedelse, oprydning)`.
+- Auto-created when an event is created (or when a day is added by extending
+  the date range). Admins can extend the catalog.
+- Anyone can claim or release a chor for themselves; parents can claim for
+  their children.
+- Unassigned chors are surfaced clearly: counted in the event header (jumps
+  to the Chors tab) and listed at the top of the Chors tab.
+- The host or admin can reassign any chor.
+
+### 5.4 Activities
+
+- Per-day list created by users.
+- Anyone can create, edit, or sign themselves and their children up to an
+  activity.
+- An activity has a name, optional description, optional start time, and a
+  list of attendees.
+
+## 6. Budget
+
+### 6.1 Categories
+
+- Default categories: rental ("Udlejning"), utilities ("Forbrug"), food
+  ("Mad"), activities ("Aktiviteter"), other ("Andet").
+- Admins can add, rename, delete (only if unused) and toggle three flags per
+  category from `/indstillinger`:
+  - `is_per_person` — split per attendee, not per family.
+  - `is_per_night` — multiplied by attended days.
+  - `is_utility` — must be registered after the event (e.g. heating, water).
+- Forbrug is seeded with `is_utility = true`.
+
+### 6.2 Expenses
+
+- An expense has: amount, category, optional description, optional link to a
+  chor (e.g. "groceries for Saturday lunch") and a payer.
+- The current user is the default payer when creating; admins can change the
+  payer of any expense afterwards (children cannot be set as a payer).
+- Anyone (except children) can add expenses while the event is open. Once
+  finalized, only admins can edit, as a controlled escape hatch.
+
+### 6.3 Budget tab
+
+- **Total** with the user's own family share, paid amount and net.
+- **Foreløbigt regnskab** — per-family running totals (paid, share, net)
+  updated live, even before the event is closed.
+- **Settlements** — minimum-overflow transfers between families (greedy
+  two-pointer), shown by family name not by ID.
+- **Expenses list** — grouped row with category, optional chor badge, "Betalt
+  af X", inline edit (rename, change category/amount/chor, change payer for
+  admins).
+- A warning banner shows when there are utility categories with no expenses
+  yet.
+- The "Endeligt afsluttet" button opens a confirmation dialog whose copy
+  escalates if utilities are still missing.
+- Children cannot view the Budget tab.
+
+### 6.4 Splitting & fairness
+
+- Per-category total is distributed in proportion to each user's "units":
+  - units = `weight × (attendance_days if is_per_night else 1 if attended else 0)`
+  - weight = 0 (baby) / 0.5 (kid) / 1.0 (teen+adult)
+- The last cent is balanced via the largest-remainder method so totals are
+  exact.
+- Family net = Σ user net within the family.
+- Settlements are minimised via a greedy two-pointer pairing of biggest
+  creditor and biggest debtor — each transfer is shown ("Familie A betaler
+  X kr til Familie B") so the math is transparent and fair.
+- Rental (per-family) and food (per-person, per-night) split differently by
+  default; admins can rebalance via the category flags.
+
+### 6.5 Finalization
+
+- Host or admin clicks "Endeligt afsluttet" → confirm → status `afsluttet`,
+  budget locked.
+- A summary email is sent to all opted-in adults with totals and payment
+  instructions.
+- After lock, only admins can edit expenses.
+
+## 7. Notifications & chat
+
+- A single global chat room visible to all logged-in users (children
+  included).
+- The Chat tab in the app shell shows messages with daily date separators
+  and auto-scroll. Polled every 5 s; future-friendly for WebSockets.
+- A user can post chat messages; chat-only messages are NOT a notifiable
+  event.
+- The following actions DO post a system message in the chat (with an icon
+  and a link to the related event) AND email opted-in adults excluding the
+  actor:
+  - Event created
+  - Summerhouse URL added to an event that didn't have one
+  - Attendance changed
+  - Activity created or joined
+  - Chor assigned
+  - Event finalized
+- Email delivery: always written to the DB outbox + stdout. If `SMTP_HOST` is
+  set, also attempted via SMTP. Failures don't break the underlying user
+  action (`@_safe` decorator on every notification call).
+- A user can opt in/out of email notifications. On first login they get a
+  one-shot modal asking. They can change it later under their profile.
+- **Future** — web-push for "phone notifications" (VAPID keys + service
+  worker) is deferred but the opt-in flag and notification interface are
+  shaped so it can be added without changing call-sites.
+
+## 8. Summerhouse scrape
+
+- The host can paste a summerhouse URL on the event.
+- Hosts/admins can hit "Refresh" to fetch the page; the scraper extracts
+  title, summary (Open Graph first, then `<h1>` + first long `<p>`, with
+  generic-blurb skipping for known commercial sites) and a hero image.
+- Result is cached on the event (`summerhouse_title`, `summerhouse_summary`,
+  `summerhouse_image_url`, `summerhouse_scraped_at`).
+- The Summerhouse hero card on the event page renders the image, title,
+  summary and a link out.
+
+## 9. Maps
+
+- We use the keyless Google-Maps embed iframe (`/maps?q=...`) — no API key
+  required.
+- The mini-map tile in the event header is click-through: it opens
+  `event.location_url` if set, otherwise a Google Maps search of the address.
+- Mobile is the priority: it must be one tap from the event to "open in
+  Maps".
+
+## 10. Pages
+
+- `/login` — email + password.
+- `/register?token=…` — invite landing (sets name + password).
+- `/glemt-adgangskode` — forgot-password landing (real reset email is
+  deferred).
+- `/` — home with next-event hero and quick-action.
+- `/arrangementer` — list of all events.
+- `/arrangementer/[id]` — event detail (header + tabs).
+- `/familie` — your family unit (with age-category badges on children).
+- `/chat` — global chat room.
+- `/profil` — your profile, password change, notification preference.
+- `/indstillinger` — admin only: pricing rules, expense categories CRUD,
+  families list (create / edit / invite / promote / delete).
+
+## 11. Deployment
+
+- **Dev** — `docker compose up --build` brings up Postgres, backend, Adminer,
+  and optionally the frontend container (otherwise run `npm run dev` from
+  `frontend/` on the host).
+- **Prod** — `docker compose -f docker-compose.prod.yml up -d --build` adds
+  Caddy with auto-HTTPS via Let's Encrypt.
+- All secrets via `.env` — never commit real values.
+
+## 12. Future / nice-to-have
+
+- Real password-reset emails.
+- Web-push notifications (VAPID + service worker).
+- Live updates over WebSockets (today: TanStack Query polling).
+- Family / child profile-picture upload UI (backend already supports it).
+- Event photo upload UI
+- Event photo gallery
+- Event group photo
+- Events history gallery with dias mode (image carousel)
+- Maps API integration with a key (today: keyless iframe).
+- Bulk import of past events / photos.
+- Backup / restore of the database.
+- Group photo event automatically created on the date most users are attending.
+- Chors are generated from a list of possible chors. Adjustment: first day only has dinner, last day only has breakfast.
+- Add the ability to join as assistant for a chor. When a user select a chor they can specify how many assistants they need.
