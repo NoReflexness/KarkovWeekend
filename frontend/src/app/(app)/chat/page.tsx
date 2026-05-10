@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { api, API_BASE, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { da } from "@/i18n/da";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, ChatReadState } from "@/lib/types";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -59,10 +59,21 @@ function formatTime(s: string): string {
   });
 }
 
+// How long the chat must stay visible after a render before we mark the
+// currently-displayed messages as read. Long enough to feel deliberate, short
+// enough that opening the page and tabbing away still counts as "read".
+const READ_DWELL_MS = 2500;
+
+// Treat the user as "pinned to the bottom" when they're within this many
+// pixels of it; if so, new messages auto-scroll. Otherwise we leave the
+// scroll position alone (e.g. when they're reading the unread divider).
+const STICK_TO_BOTTOM_THRESHOLD_PX = 80;
+
 export default function ChatPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const dividerRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
 
   const { data: messages, isLoading } = useQuery({
@@ -118,10 +129,147 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc, isLoading]);
 
+  // ---- Read-state / unread divider --------------------------------------
+  //
+  // We snapshot the server's "last read" id once on mount and *keep it
+  // stable for the visit*. That way the "—— Nye beskeder ——" divider
+  // doesn't disappear out from under the user as soon as we advance the
+  // marker on the server.
+  const { data: serverReadState } = useQuery({
+    queryKey: ["chat", "read-state"],
+    queryFn: () => api.get<ChatReadState>("/chat/read-state"),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+  const unreadAnchorRef = useRef<number | null>(null);
+  if (unreadAnchorRef.current === null && serverReadState) {
+    unreadAnchorRef.current = serverReadState.last_read_message_id;
+  }
+  const unreadAnchor = unreadAnchorRef.current;
+
+  // First message id strictly greater than the snapshot, if any.
+  const firstUnreadId = useMemo(() => {
+    if (unreadAnchor === null) return null;
+    if (!messages || messages.length === 0) return null;
+    const m = messages.find((m) => m.id > unreadAnchor);
+    return m ? m.id : null;
+  }, [messages, unreadAnchor]);
+
+  // One-shot initial scroll. After the first non-empty render we either
+  // bring the divider into view (so the user lands on what they missed) or
+  // — if there's nothing unread — scroll to the bottom like before.
+  const didInitialScrollRef = useRef(false);
+  useEffect(() => {
+    if (didInitialScrollRef.current) return;
+    if (isLoading || !messages) return;
+    didInitialScrollRef.current = true;
+    requestAnimationFrame(() => {
+      if (firstUnreadId !== null && dividerRef.current) {
+        dividerRef.current.scrollIntoView({ block: "start" });
+      } else if (scrollerRef.current) {
+        scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
+      }
+    });
+  }, [isLoading, messages, firstUnreadId]);
+
+  // For subsequent renders, only autoscroll when the user is already near
+  // the bottom — never yank them away from the divider they're reading.
+  const wasNearBottomRef = useRef(true);
+  useEffect(() => {
+    if (!didInitialScrollRef.current) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (wasNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
+  const handleScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+    wasNearBottomRef.current = distanceFromBottom <= STICK_TO_BOTTOM_THRESHOLD_PX;
+  }, []);
+
+  // Advance the marker on the server. Monotonic on the backend, so it's
+  // safe to send the same id more than once.
+  const advanceReadMarker = useCallback(
+    (id: number) => {
+      if (id <= 0) return;
+      const current = unreadAnchorRef.current ?? 0;
+      // Don't bother the server with no-ops, but always send if we are
+      // crossing the snapshot for the first time.
+      if (id <= current && current !== unreadAnchor) return;
+      void api
+        .put<ChatReadState>("/chat/read-state", { last_read_message_id: id })
+        .catch(() => {
+          /* swallow — next visit will retry */
+        });
+    },
+    [unreadAnchor],
+  );
+
+  // Track the highest id we've actually rendered. Updated on every message
+  // change so the dwell + visibility flush always send the latest known id.
+  const latestRenderedIdRef = useRef(0);
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    latestRenderedIdRef.current = Math.max(
+      latestRenderedIdRef.current,
+      ...messages.map((m) => m.id),
+    );
+  }, [messages]);
+
+  // Dwell timer: after the user has been staring at chat for a couple of
+  // seconds we mark everything visible as read.
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const t = window.setTimeout(() => {
+      advanceReadMarker(latestRenderedIdRef.current);
+    }, READ_DWELL_MS);
+    return () => window.clearTimeout(t);
+  }, [messages, advanceReadMarker]);
+
+  // Flush on tab-hide / unmount so the marker stays accurate even if the
+  // user closes the tab before the dwell timer fires.
+  useEffect(() => {
+    const flush = () => {
+      const id = latestRenderedIdRef.current;
+      if (id <= 0) return;
+      try {
+        const url = `${API_BASE}/chat/read-state`;
+        const blob = new Blob(
+          [JSON.stringify({ last_read_message_id: id })],
+          { type: "application/json" },
+        );
+        if (
+          typeof navigator !== "undefined" &&
+          typeof navigator.sendBeacon === "function" &&
+          navigator.sendBeacon(url, blob)
+        ) {
+          return;
+        }
+      } catch {
+        /* fall through to the regular API */
+      }
+      advanceReadMarker(id);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, [advanceReadMarker]);
+
   const send = useMutation({
     mutationFn: (body: string) => api.post<ChatMessage>("/chat/messages", { body }),
     onSuccess: () => {
       setText("");
+      // Posting a message implies we've seen everything that came before.
+      wasNearBottomRef.current = true;
       qc.invalidateQueries({ queryKey: ["chat", "messages"] });
     },
     onError: (e) => {
@@ -149,11 +297,6 @@ export default function ChatPage() {
     return out;
   }, [messages]);
 
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
   return (
     <Card className="flex h-[calc(100svh-12rem)] flex-col overflow-hidden md:h-[calc(100svh-9rem)]">
       <CardHeader className="border-b pb-3">
@@ -162,6 +305,7 @@ export default function ChatPage() {
       </CardHeader>
       <CardContent
         ref={scrollerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-3 py-4 sm:px-6"
       >
         {isLoading ? (
@@ -186,13 +330,27 @@ export default function ChatPage() {
                   <div className="bg-foreground/10 h-px flex-1" />
                 </div>
                 {group.items.map((m) => (
-                  <MessageRow
+                  <div
                     key={m.id}
-                    msg={m}
-                    isOwn={!!user && m.user_id === user.id}
-                    isAdmin={user?.role === "admin"}
-                    onDelete={() => remove.mutate(m.id)}
-                  />
+                    ref={m.id === firstUnreadId ? dividerRef : undefined}
+                    className="flex flex-col gap-2 scroll-mt-4"
+                  >
+                    {m.id === firstUnreadId && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <div className="bg-primary/40 h-px flex-1" />
+                        <span className="bg-primary/15 text-primary rounded-full px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide">
+                          {da.chat.unreadDivider}
+                        </span>
+                        <div className="bg-primary/40 h-px flex-1" />
+                      </div>
+                    )}
+                    <MessageRow
+                      msg={m}
+                      isOwn={!!user && m.user_id === user.id}
+                      isAdmin={user?.role === "admin"}
+                      onDelete={() => remove.mutate(m.id)}
+                    />
+                  </div>
                 ))}
               </section>
             ))}

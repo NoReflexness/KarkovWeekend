@@ -42,6 +42,12 @@ class User(Base):
     notify_prompted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Highest chat-message id this user has read. Monotonically advanced via
+    # `PUT /chat/read-state`. Used to render the "new messages" divider and
+    # auto-scroll to it on the next visit.
+    last_read_chat_message_id: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
 
     family: Mapped["Family | None"] = relationship(  # type: ignore[name-defined]  # noqa: F821
         back_populates="members", foreign_keys=[family_id]

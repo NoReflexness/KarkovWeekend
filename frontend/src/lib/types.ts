@@ -170,3 +170,8 @@ export interface NotifyPref {
   notify_prompted_at: string | null;
   needs_prompt: boolean;
 }
+
+export interface ChatReadState {
+  last_read_message_id: number;
+  latest_message_id: number;
+}

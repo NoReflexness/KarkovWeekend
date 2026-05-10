@@ -10,7 +10,14 @@ from app.core.db import SessionLocal
 from app.core.deps import CurrentUser, DbDep
 from app.models.chat_message import ChatMessage, ChatMessageKind
 from app.models.user import User, UserRole
-from app.schemas.chat import ChatMessageCreate, ChatMessageOut, NotifyPrefIn, NotifyPrefOut
+from app.schemas.chat import (
+    ChatMessageCreate,
+    ChatMessageOut,
+    NotifyPrefIn,
+    NotifyPrefOut,
+    ReadStateIn,
+    ReadStateOut,
+)
 from app.core.security import now_utc
 from app.services.notification_queue import flush_due_pending_notifications
 
@@ -200,4 +207,42 @@ def dismiss_notify_prompt(db: DbDep, user: CurrentUser) -> NotifyPrefOut:
         notify_email=user.notify_email,
         notify_prompted_at=user.notify_prompted_at,
         needs_prompt=False,
+    )
+
+
+# ---- Read state -----------------------------------------------------------
+
+
+def _latest_chat_id(db) -> int:
+    row = db.query(ChatMessage.id).order_by(ChatMessage.id.desc()).first()
+    return int(row[0]) if row else 0
+
+
+@router.get("/read-state", response_model=ReadStateOut)
+def get_read_state(db: DbDep, user: CurrentUser) -> ReadStateOut:
+    return ReadStateOut(
+        last_read_message_id=user.last_read_chat_message_id or 0,
+        latest_message_id=_latest_chat_id(db),
+    )
+
+
+@router.put("/read-state", response_model=ReadStateOut)
+def set_read_state(
+    payload: ReadStateIn, db: DbDep, user: CurrentUser
+) -> ReadStateOut:
+    """Advance (monotonically) the user's last-read chat message id.
+
+    Lower values are silently ignored so that a stale tab cannot rewind a
+    fresher tab's marker. Values above the current latest message id are
+    clamped to the latest id so the marker never points at the future.
+    """
+    latest = _latest_chat_id(db)
+    capped = min(int(payload.last_read_message_id), latest)
+    if capped > (user.last_read_chat_message_id or 0):
+        user.last_read_chat_message_id = capped
+        db.commit()
+        db.refresh(user)
+    return ReadStateOut(
+        last_read_message_id=user.last_read_chat_message_id or 0,
+        latest_message_id=latest,
     )

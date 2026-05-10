@@ -29,6 +29,7 @@ def _ensure_dev_schema() -> None:
         ("events", "summerhouse_scraped_at", "TIMESTAMP WITH TIME ZONE NULL"),
         ("users", "notify_email", "BOOLEAN NULL"),
         ("users", "notify_prompted_at", "TIMESTAMP WITH TIME ZONE NULL"),
+        ("users", "last_read_chat_message_id", "INTEGER NOT NULL DEFAULT 0"),
         ("expense_categories", "is_utility", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ]
     with engine.begin() as conn:

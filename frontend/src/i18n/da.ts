@@ -248,6 +248,7 @@ export const da = {
     today: "I dag",
     yesterday: "I går",
     systemBadge: "System",
+    unreadDivider: "Nye beskeder",
   },
   notify: {
     title: "Vil du have besked på email?",

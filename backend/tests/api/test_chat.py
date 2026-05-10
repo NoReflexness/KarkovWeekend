@@ -206,3 +206,64 @@ def test_chat_stream_requires_auth(client):
     client.post("/api/v1/auth/logout")
     r = client.get("/api/v1/chat/stream")
     assert r.status_code == 401
+
+
+def test_read_state_starts_at_zero_and_tracks_latest(client):
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    initial = client.get("/api/v1/chat/read-state").json()
+    assert initial["last_read_message_id"] == 0
+    a = client.post("/api/v1/chat/messages", json={"body": "hej en"}).json()
+    after = client.get("/api/v1/chat/read-state").json()
+    assert after["last_read_message_id"] == 0
+    assert after["latest_message_id"] == a["id"]
+
+
+def test_read_state_advances_monotonically(client):
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    a = client.post("/api/v1/chat/messages", json={"body": "a"}).json()
+    b = client.post("/api/v1/chat/messages", json={"body": "b"}).json()
+
+    advanced = client.put(
+        "/api/v1/chat/read-state", json={"last_read_message_id": a["id"]}
+    ).json()
+    assert advanced["last_read_message_id"] == a["id"]
+    assert advanced["latest_message_id"] == b["id"]
+
+    # Lower values are silently ignored.
+    rewound = client.put(
+        "/api/v1/chat/read-state", json={"last_read_message_id": 0}
+    ).json()
+    assert rewound["last_read_message_id"] == a["id"]
+
+    # Values above latest are clamped to latest.
+    far_future = client.put(
+        "/api/v1/chat/read-state",
+        json={"last_read_message_id": b["id"] + 9999},
+    ).json()
+    assert far_future["last_read_message_id"] == b["id"]
+
+
+def test_read_state_is_per_user(client):
+    _bootstrap_parent(client, "alice@example.com")
+    parent_initial = client.get("/api/v1/chat/read-state").json()
+    assert parent_initial["last_read_message_id"] == 0
+
+    a = client.post("/api/v1/chat/messages", json={"body": "from alice"}).json()
+    client.put("/api/v1/chat/read-state", json={"last_read_message_id": a["id"]})
+
+    client.post("/api/v1/auth/logout")
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    admin_state = client.get("/api/v1/chat/read-state").json()
+    assert admin_state["last_read_message_id"] == 0
+    assert admin_state["latest_message_id"] == a["id"]
+
+
+def test_read_state_requires_auth(client):
+    client.post("/api/v1/auth/logout")
+    assert client.get("/api/v1/chat/read-state").status_code == 401
+    assert (
+        client.put(
+            "/api/v1/chat/read-state", json={"last_read_message_id": 1}
+        ).status_code
+        == 401
+    )
