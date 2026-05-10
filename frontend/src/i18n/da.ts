@@ -328,12 +328,27 @@ export const da = {
     newPassword: "Ny adgangskode",
     profilePicture: "Profilbillede",
     uploadPicture: "Upload billede",
+    uploadFamilyPicture: "Skift familiebillede",
+    uploadChildPicture: "Skift billede",
+    uploadingPicture: "Uploader…",
     notificationsTitle: "Notifikationer",
     notificationsHint:
       "Email sendes ved nye arrangementer, tilmeldinger og når regnskabet er klart.",
     notifyEmailOn: "Send email-notifikationer",
     notifyEmailOff: "Slå email-notifikationer fra",
     notifyEmailUnset: "Ikke besluttet endnu",
+    pushTitle: "Push-notifikationer på denne enhed",
+    pushHint:
+      "Aktivér push, så denne enhed vibrerer/giver lyd ved nye arrangementer, tilmeldinger og chat-systembeskeder.",
+    pushUnsupported:
+      "Denne browser understøtter ikke push-notifikationer. Prøv at åbne siden i en moderne browser eller installer den som app.",
+    pushDenied:
+      "Notifikationer er afvist i browseren. Tillad dem under sidens indstillinger og prøv igen.",
+    pushEnable: "Slå push til",
+    pushDisable: "Slå push fra",
+    pushEnabled: "Push er slået til på denne enhed.",
+    pushDisabled: "Push er slået fra på denne enhed.",
+    pushSaving: "Et øjeblik…",
     familyTitle: "Min familie",
     familyHint:
       "Du kan redigere navne, fødselsdage og email for resten af husstanden. Adgangskoder kan kun ændres af brugeren selv.",

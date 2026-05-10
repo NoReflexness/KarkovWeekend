@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { formatKr, daysUntil } from "./format";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { formatKr, daysUntil, mapsEmbedUrl, mapsOpenUrl } from "./format";
 
 describe("formatKr", () => {
   it("formats integer cents", () => {
@@ -28,5 +28,45 @@ describe("daysUntil", () => {
   });
   it("returns negative for the past", () => {
     expect(daysUntil(localDateString(-3))).toBe(-3);
+  });
+});
+
+describe("mapsEmbedUrl / mapsOpenUrl", () => {
+  const KEY_ENV = "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY";
+  const original = process.env[KEY_ENV];
+
+  beforeEach(() => {
+    delete process.env[KEY_ENV];
+  });
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY_ENV];
+    else process.env[KEY_ENV] = original;
+  });
+
+  it("returns null for empty input", () => {
+    expect(mapsEmbedUrl(null)).toBeNull();
+    expect(mapsEmbedUrl("   ")).toBeNull();
+    expect(mapsOpenUrl(undefined)).toBeNull();
+  });
+
+  it("uses keyless embed when no API key is configured", () => {
+    const u = mapsEmbedUrl("Karkov, Danmark")!;
+    expect(u).toContain("https://www.google.com/maps?q=");
+    expect(u).toContain("output=embed");
+    expect(u).not.toContain("/embed/v1/");
+  });
+
+  it("uses Maps Embed API when key is configured", () => {
+    process.env[KEY_ENV] = "TEST-KEY";
+    const u = mapsEmbedUrl("Karkov, Danmark")!;
+    expect(u).toContain("https://www.google.com/maps/embed/v1/place");
+    expect(u).toContain("key=TEST-KEY");
+    expect(u).toContain("q=Karkov");
+  });
+
+  it("encodes the open-in-maps query", () => {
+    const u = mapsOpenUrl("Hovedgaden 1, 6000 Kolding")!;
+    expect(u).toContain("https://www.google.com/maps/search/?api=1");
+    expect(u).toContain("query=Hovedgaden");
   });
 });

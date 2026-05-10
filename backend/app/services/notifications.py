@@ -47,6 +47,14 @@ def _post_system_message(
     db.add(msg)
     db.flush()
     _email_opted_in(db, subject="Karkov", body=body, exclude_user_id=actor_user_id)
+    _push_opted_in(
+        db,
+        title="Karkov",
+        body=body,
+        url=f"/arrangementer/{related_event_id}" if related_event_id else "/chat",
+        icon=icon,
+        exclude_user_id=actor_user_id,
+    )
     return msg
 
 
@@ -68,6 +76,37 @@ def _email_opted_in(
             sender.send(db, to=u.email, subject=subject, body=body)  # type: ignore[arg-type]
         except Exception:  # noqa: BLE001
             log.exception("Failed to send notification email to %s", u.email)
+
+
+def _push_opted_in(
+    db: Session,
+    *,
+    title: str,
+    body: str,
+    url: str | None,
+    icon: str | None,
+    exclude_user_id: int | None,
+) -> None:
+    try:
+        from app.services.push import fan_out  # local import: lazy/optional dep
+    except Exception:  # noqa: BLE001
+        log.exception("Push service unavailable; skipping push fan-out")
+        return
+
+    q = (
+        db.query(User.id)
+        .filter(User.notify_email.is_(True))
+        .filter(User.role != UserRole.CHILD)
+    )
+    if exclude_user_id is not None:
+        q = q.filter(User.id != exclude_user_id)
+    user_ids = [row[0] for row in q.all()]
+    if not user_ids:
+        return
+    try:
+        fan_out(db, user_ids=user_ids, title=title, body=body, url=url, icon=icon)
+    except Exception:  # noqa: BLE001
+        log.exception("Push fan-out failed")
 
 
 def _safe(fn):

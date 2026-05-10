@@ -8,7 +8,7 @@ import { BedDouble, CalendarDays, MapPin } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { da } from "@/i18n/da";
-import { daysUntil, formatDateRange } from "@/lib/format";
+import { daysUntil, formatDateRange, mapsEmbedUrl } from "@/lib/format";
 import type { KarkovEvent } from "@/lib/types";
 
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +65,7 @@ export default function HomePage() {
 
   const days = daysUntil(data.start_date);
   const mapEmbed = data.location_url
-    ? `https://www.google.com/maps?q=${encodeURIComponent(data.address ?? data.location_url)}&output=embed`
+    ? mapsEmbedUrl(data.address ?? data.location_url)
     : null;
 
   return (

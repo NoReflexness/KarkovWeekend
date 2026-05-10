@@ -39,6 +39,10 @@ const schema = z
     path: ["end_date"],
   });
 type FormValues = z.infer<typeof schema>;
+// `z.coerce.number()` produces a different input vs. output type, so the
+// resolver expects the *input* shape while we want the *output* shape from
+// `handleSubmit`. The third generic of `useForm` lets us bridge the two.
+type FormInput = z.input<typeof schema>;
 
 function plusOneYear(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -65,7 +69,7 @@ export function PlanNextYearButton({ event }: { event: KarkovEvent }) {
 
   const isAdmin = user?.role === "admin";
 
-  const defaults = useMemo<FormValues>(
+  const defaults = useMemo<FormInput>(
     () => ({
       name: bumpYearInName(event.name),
       start_date: plusOneYear(event.start_date),
@@ -75,7 +79,7 @@ export function PlanNextYearButton({ event }: { event: KarkovEvent }) {
     [event.name, event.start_date, event.end_date, event.bed_count],
   );
 
-  const form = useForm<FormValues>({
+  const form = useForm<FormInput, unknown, FormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
     values: defaults,

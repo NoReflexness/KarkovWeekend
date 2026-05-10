@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { api, ApiError } from "@/lib/api";
+import { api, API_BASE, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { da } from "@/i18n/da";
 import type { ChatMessage } from "@/lib/types";
@@ -68,9 +68,55 @@ export default function ChatPage() {
   const { data: messages, isLoading } = useQuery({
     queryKey: ["chat", "messages"],
     queryFn: () => api.get<ChatMessage[]>("/chat/messages?limit=200"),
-    refetchInterval: 5000,
+    // SSE pushes new messages as they arrive (see effect below). When the
+    // browser is missing EventSource (very rare) or the connection is broken
+    // for a while, this 30 s safety-net poll catches up.
+    refetchInterval: 30000,
     refetchIntervalInBackground: false,
   });
+
+  // Live updates via Server-Sent Events. We append new messages directly into
+  // the cached query data so the UI doesn't need to re-fetch the full list.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
+    }
+    const lastId =
+      (messages && messages.length > 0
+        ? Math.max(...messages.map((m) => m.id))
+        : 0) ?? 0;
+    const url = `${API_BASE}/chat/stream?since_id=${lastId}`;
+    const es = new EventSource(url, { withCredentials: true });
+    es.addEventListener("messages", (ev) => {
+      try {
+        const incoming = JSON.parse((ev as MessageEvent).data) as ChatMessage[];
+        if (!Array.isArray(incoming) || incoming.length === 0) return;
+        qc.setQueryData<ChatMessage[]>(["chat", "messages"], (prev) => {
+          const prior = prev ?? [];
+          const known = new Set(prior.map((m) => m.id));
+          const merged = [...prior];
+          for (const m of incoming) {
+            if (!known.has(m.id)) merged.push(m);
+          }
+          merged.sort((a, b) => a.id - b.id);
+          return merged;
+        });
+      } catch {
+        // Ignore malformed payloads; the safety-net poll will catch up.
+      }
+    });
+    es.addEventListener("bye", () => es.close());
+    es.onerror = () => {
+      // EventSource auto-reconnects; nothing to do here.
+    };
+    return () => {
+      es.close();
+    };
+    // We intentionally only reopen the stream when the *first* batch arrives.
+    // Reopening on every message would be wasteful, and the stream itself
+    // walks `since_id` forward internally.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, isLoading]);
 
   const send = useMutation({
     mutationFn: (body: string) => api.post<ChatMessage>("/chat/messages", { body }),

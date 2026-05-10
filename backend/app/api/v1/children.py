@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from app.core.deps import CurrentUser, DbDep
 from app.core.security import hash_password
 from app.models.user import User, UserRole
 from app.schemas.auth import UserOut
 from app.schemas.user import ChildUpdate
+from app.services.uploads import save_profile_picture
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -40,6 +41,17 @@ def update_child(
         child.email = payload.email.lower()
     if payload.password is not None:
         child.password_hash = hash_password(payload.password)
+    db.commit()
+    db.refresh(child)
+    return UserOut.model_validate(child)
+
+
+@router.post("/{child_id}/profile-picture", response_model=UserOut)
+def upload_child_picture(
+    child_id: int, file: UploadFile, db: DbDep, user: CurrentUser
+) -> UserOut:
+    child = _load_child_for_caller(child_id, db, user)
+    child.profile_picture_url = save_profile_picture(file, subdir=f"children/{child.id}")
     db.commit()
     db.refresh(child)
     return UserOut.model_validate(child)

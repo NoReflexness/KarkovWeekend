@@ -24,6 +24,8 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ImagePlus } from "lucide-react";
+import { PushToggle } from "@/components/push-toggle";
 
 const profileSchema = z.object({
   name: z.string().min(1),
@@ -197,6 +199,7 @@ export default function ProfilePage() {
               {da.profile.notifyEmailOff}
             </Button>
           </div>
+          <PushToggle />
         </CardContent>
       </Card>
 
@@ -243,11 +246,46 @@ function FamilyMembersCard({
   currentUserId: number;
   familyId: number | null;
 }) {
+  const qc = useQueryClient();
+  const familyFileRef = useRef<HTMLInputElement>(null);
+  const [savingFamilyPic, setSavingFamilyPic] = useState(false);
+  const [savingChildId, setSavingChildId] = useState<number | null>(null);
+
   const { data: family, isLoading } = useQuery({
     queryKey: ["family", familyId],
     queryFn: () => api.get<Family>(`/families/${familyId}`),
     enabled: familyId !== null,
   });
+
+  const refresh = () =>
+    qc.invalidateQueries({ queryKey: ["family", familyId] });
+
+  const uploadFamilyPicture = async (file: File) => {
+    if (familyId === null) return;
+    setSavingFamilyPic(true);
+    try {
+      await api.upload<Family>(`/families/${familyId}/profile-picture`, file);
+      await refresh();
+      toast.success(da.profile.saved);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSavingFamilyPic(false);
+    }
+  };
+
+  const uploadChildPicture = async (childId: number, file: File) => {
+    setSavingChildId(childId);
+    try {
+      await api.upload<User>(`/children/${childId}/profile-picture`, file);
+      await refresh();
+      toast.success(da.profile.saved);
+    } catch (e) {
+      if (e instanceof ApiError) toast.error(e.message);
+    } finally {
+      setSavingChildId(null);
+    }
+  };
 
   return (
     <Card className="md:col-span-2">
@@ -261,48 +299,93 @@ function FamilyMembersCard({
         )}
         {isLoading && <Skeleton className="h-20 w-full" />}
         {family && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FamilyColumn
-              icon={<Users className="size-4" />}
-              label={da.profile.membersHeading}
-              members={family.members.filter((m) => m.role !== "child")}
-              renderEdit={(member) =>
-                member.id === currentUserId ? null : (
-                  <EditParentDialog
+          <>
+            <div className="flex items-center gap-4">
+              <Avatar className="size-16">
+                {family.profile_picture_url && (
+                  <AvatarImage
+                    src={publicUrl(family.profile_picture_url)}
+                    alt={family.name}
+                  />
+                )}
+                <AvatarFallback>
+                  {family.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{family.name}</span>
+                <input
+                  ref={familyFileRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void uploadFamilyPicture(f);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => familyFileRef.current?.click()}
+                  disabled={savingFamilyPic}
+                >
+                  <ImagePlus className="size-4" />
+                  {savingFamilyPic
+                    ? da.profile.uploadingPicture
+                    : da.profile.uploadFamilyPicture}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FamilyColumn
+                icon={<Users className="size-4" />}
+                label={da.profile.membersHeading}
+                members={family.members.filter((m) => m.role !== "child")}
+                renderEdit={(member) =>
+                  member.id === currentUserId ? null : (
+                    <EditParentDialog
+                      user={member}
+                      trigger={
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title={da.family.editParent}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                      }
+                    />
+                  )
+                }
+              />
+              <FamilyColumn
+                icon={<Baby className="size-4" />}
+                label={da.profile.childrenHeading}
+                members={family.members.filter((m) => m.role === "child")}
+                renderEdit={(member) => (
+                  <EditChildDialog
                     user={member}
                     trigger={
                       <Button
                         size="icon"
                         variant="ghost"
-                        title={da.family.editParent}
+                        title={da.family.editChild}
                       >
                         <Pencil className="size-4" />
                       </Button>
                     }
                   />
-                )
-              }
-            />
-            <FamilyColumn
-              icon={<Baby className="size-4" />}
-              label={da.profile.childrenHeading}
-              members={family.members.filter((m) => m.role === "child")}
-              renderEdit={(member) => (
-                <EditChildDialog
-                  user={member}
-                  trigger={
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title={da.family.editChild}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                  }
-                />
-              )}
-            />
-          </div>
+                )}
+                onUploadPicture={(child, file) =>
+                  uploadChildPicture(child.id, file)
+                }
+                uploadingId={savingChildId}
+              />
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -314,11 +397,15 @@ function FamilyColumn({
   label,
   members,
   renderEdit,
+  onUploadPicture,
+  uploadingId,
 }: {
   icon: React.ReactNode;
   label: string;
   members: User[];
   renderEdit: (m: User) => React.ReactNode;
+  onUploadPicture?: (m: User, file: File) => void;
+  uploadingId?: number | null;
 }) {
   return (
     <div className="grid gap-2 content-start">
@@ -348,9 +435,53 @@ function FamilyColumn({
               </span>
             )}
           </div>
+          {onUploadPicture && (
+            <PictureUploadButton
+              memberId={m.id}
+              uploading={uploadingId === m.id}
+              onPick={(file) => onUploadPicture(m, file)}
+            />
+          )}
           {renderEdit(m)}
         </div>
       ))}
     </div>
+  );
+}
+
+function PictureUploadButton({
+  memberId,
+  uploading,
+  onPick,
+}: {
+  memberId: number;
+  uploading: boolean;
+  onPick: (file: File) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = "";
+        }}
+      />
+      <Button
+        size="icon"
+        variant="ghost"
+        title={da.profile.uploadChildPicture}
+        onClick={() => ref.current?.click()}
+        disabled={uploading}
+        aria-label={`${da.profile.uploadChildPicture} ${memberId}`}
+      >
+        <ImagePlus className="size-4" />
+      </Button>
+    </>
   );
 }

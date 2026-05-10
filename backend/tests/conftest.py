@@ -73,11 +73,17 @@ def client(db_engine) -> Iterator[TestClient]:
 
     # Patch the SessionLocal used by seed_initial_data temporarily.
     import app.seeds as seeds_mod  # noqa: WPS433
+    import app.core.db as db_mod  # noqa: WPS433
+    import app.api.v1.chat as chat_mod  # noqa: WPS433
 
     original_sessionlocal = None
     if hasattr(seeds_mod, "SessionLocal"):
         original_sessionlocal = seeds_mod.SessionLocal
         seeds_mod.SessionLocal = SessionLocal  # type: ignore[assignment]
+    original_db_sessionlocal = db_mod.SessionLocal
+    db_mod.SessionLocal = SessionLocal  # type: ignore[assignment]
+    original_chat_sessionlocal = chat_mod.SessionLocal
+    chat_mod.SessionLocal = SessionLocal  # type: ignore[assignment]
     try:
         seed_initial_data()
         with TestClient(app) as c:
@@ -85,4 +91,6 @@ def client(db_engine) -> Iterator[TestClient]:
     finally:
         if original_sessionlocal is not None:
             seeds_mod.SessionLocal = original_sessionlocal  # type: ignore[assignment]
+        db_mod.SessionLocal = original_db_sessionlocal  # type: ignore[assignment]
+        chat_mod.SessionLocal = original_chat_sessionlocal  # type: ignore[assignment]
         app.dependency_overrides.clear()

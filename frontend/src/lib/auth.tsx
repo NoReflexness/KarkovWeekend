@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { useRouter } from "next/navigation";
 
 import { ApiError, api } from "@/lib/api";
+import { registerServiceWorker } from "@/lib/push";
 import type { User } from "@/lib/types";
 
 interface AuthState {
@@ -38,6 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    // Best-effort: install the service worker once on app load so push
+    // notifications keep working after a hard refresh. Failures are silent —
+    // browsers without push support simply skip this.
+    void registerServiceWorker();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

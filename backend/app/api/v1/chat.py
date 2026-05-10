@@ -1,5 +1,12 @@
-from fastapi import APIRouter, HTTPException, status
+import json
+import time
+from collections.abc import Iterator
 
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
+
+from app.core.config import get_settings
+from app.core.db import SessionLocal
 from app.core.deps import CurrentUser, DbDep
 from app.models.chat_message import ChatMessage, ChatMessageKind
 from app.models.user import User, UserRole
@@ -58,6 +65,68 @@ def list_messages(
     )
     rows.reverse()
     return _hydrate(db, rows)
+
+
+@router.get("/stream")
+def stream_messages(_: CurrentUser, since_id: int = 0) -> StreamingResponse:
+    """Server-Sent Events stream of new chat messages.
+
+    Pushes messages to the client as they appear, replacing the polling that
+    used to happen every 5 seconds. Auth is via the same access-token cookie
+    used elsewhere; we resolve it once via the regular `CurrentUser` dependency
+    and then tail the database with short-lived sessions inside the generator
+    so the request session itself can be closed by FastAPI right away.
+    """
+    settings = get_settings()
+    poll = max(0.0, float(settings.chat_stream_poll_seconds))
+    max_seconds = max(1.0, float(settings.chat_stream_max_seconds))
+    keepalive = max(1.0, float(settings.chat_stream_keepalive_seconds))
+
+    def _generate() -> Iterator[bytes]:
+        last_id = max(0, int(since_id))
+        started = time.monotonic()
+        last_emit = started
+        # Tell the browser to back off a little before reconnecting.
+        yield b"retry: 3000\n\n"
+        while True:
+            with SessionLocal() as db:
+                if flush_due_pending_notifications(db):
+                    db.commit()
+                rows = (
+                    db.query(ChatMessage)
+                    .filter(ChatMessage.id > last_id)
+                    .order_by(ChatMessage.id.asc())
+                    .limit(200)
+                    .all()
+                )
+                if rows:
+                    out = _hydrate(db, rows)
+                    last_id = rows[-1].id
+                    payload = json.dumps([m.model_dump(mode="json") for m in out])
+                    yield f"event: messages\ndata: {payload}\n\n".encode()
+                    last_emit = time.monotonic()
+            now = time.monotonic()
+            if now - started >= max_seconds:
+                yield b"event: bye\ndata: {}\n\n"
+                return
+            if now - last_emit >= keepalive:
+                yield b": keepalive\n\n"
+                last_emit = now
+            if poll > 0:
+                time.sleep(poll)
+            else:
+                # Drain immediately for tests; bail after one pass.
+                return
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post(

@@ -708,6 +708,7 @@ const categorySchema = z.object({
   is_utility: z.boolean().default(false),
 });
 type CategoryForm = z.infer<typeof categorySchema>;
+type CategoryFormInput = z.input<typeof categorySchema>;
 
 function ExpenseCategoriesCard() {
   const qc = useQueryClient();
@@ -718,7 +719,7 @@ function ExpenseCategoriesCard() {
     queryFn: () => api.get<ExpenseCategory[]>("/expense-categories"),
   });
 
-  const form = useForm<CategoryForm>({
+  const form = useForm<CategoryFormInput, unknown, CategoryForm>({
     resolver: zodResolver(categorySchema),
     defaultValues: {
       name: "",
@@ -788,17 +789,17 @@ function ExpenseCategoriesCard() {
                 </Field>
                 <CategoryFlagRow
                   label={da.expenseCategories.perPerson}
-                  checked={form.watch("is_per_person")}
+                  checked={form.watch("is_per_person") ?? false}
                   onChange={(v) => form.setValue("is_per_person", v)}
                 />
                 <CategoryFlagRow
                   label={da.expenseCategories.perNight}
-                  checked={form.watch("is_per_night")}
+                  checked={form.watch("is_per_night") ?? false}
                   onChange={(v) => form.setValue("is_per_night", v)}
                 />
                 <CategoryFlagRow
                   label={da.expenseCategories.utility}
-                  checked={form.watch("is_utility")}
+                  checked={form.watch("is_utility") ?? false}
                   onChange={(v) => form.setValue("is_utility", v)}
                 />
                 <DialogFooter>

@@ -11,6 +11,7 @@ from app.api.v1 import (
     events,
     expenses,
     families,
+    push,
     users,
 )
 
@@ -24,5 +25,6 @@ api_router.include_router(chors.router)
 api_router.include_router(activities.router)
 api_router.include_router(expenses.router)
 api_router.include_router(chat.router)
+api_router.include_router(push.router)
 api_router.include_router(admin.router)
 api_router.include_router(debug.router)

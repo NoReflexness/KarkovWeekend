@@ -346,6 +346,14 @@ def _post_message(
     db.add(msg)
     db.flush()
     _email_opted_in(db, body=body, exclude_user_id=actor_user_id)
+    _push_opted_in(
+        db,
+        title="Karkov",
+        body=body,
+        url=f"/arrangementer/{related_event_id}" if related_event_id else "/chat",
+        icon=icon,
+        exclude_user_id=actor_user_id,
+    )
 
 
 def _email_opted_in(db: Session, *, body: str, exclude_user_id: int | None) -> None:
@@ -363,3 +371,39 @@ def _email_opted_in(db: Session, *, body: str, exclude_user_id: int | None) -> N
             sender.send(db, to=u.email, subject="Karkov", body=body)  # type: ignore[arg-type]
         except Exception:  # noqa: BLE001
             log.exception("Failed to send notification email to %s", u.email)
+
+
+def _push_opted_in(
+    db: Session,
+    *,
+    title: str,
+    body: str,
+    url: str | None,
+    icon: str | None,
+    exclude_user_id: int | None,
+) -> None:
+    """Fan out a Web Push notification to all opted-in non-child users.
+
+    We deliberately reuse the same opt-in flag as email — users see one
+    "notifications on/off" toggle and that controls both channels.
+    """
+    try:
+        from app.services.push import fan_out  # local import: lazy/optional dep
+    except Exception:  # noqa: BLE001
+        log.exception("Push service unavailable; skipping push fan-out")
+        return
+
+    q = (
+        db.query(User.id)
+        .filter(User.notify_email.is_(True))
+        .filter(User.role != UserRole.CHILD)
+    )
+    if exclude_user_id is not None:
+        q = q.filter(User.id != exclude_user_id)
+    user_ids = [row[0] for row in q.all()]
+    if not user_ids:
+        return
+    try:
+        fan_out(db, user_ids=user_ids, title=title, body=body, url=url, icon=icon)
+    except Exception:  # noqa: BLE001
+        log.exception("Push fan-out failed")

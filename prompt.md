@@ -212,26 +212,38 @@ tool.
 - A single global chat room visible to all logged-in users (children
   included).
 - The Chat tab in the app shell shows messages with daily date separators
-  and auto-scroll. Polled every 5 s; future-friendly for WebSockets.
+  and auto-scroll.
+- **Live updates** are delivered over Server-Sent Events
+  (`GET /api/v1/chat/stream`). The client opens an `EventSource` after the
+  initial fetch; new messages stream in within seconds. A 30-second safety
+  poll covers SSE outages.
 - A user can post chat messages; chat-only messages are NOT a notifiable
   event.
 - The following actions DO post a system message in the chat (with an icon
-  and a link to the related event) AND email opted-in adults excluding the
-  actor:
+  and a link to the related event) AND fan out to opted-in adults excluding
+  the actor over **email** + **web push**:
   - Event created
   - Summerhouse URL added to an event that didn't have one
   - Attendance changed
   - Activity created or joined
   - Chor assigned
   - Event finalized
-- Email delivery: always written to the DB outbox + stdout. If `SMTP_HOST` is
-  set, also attempted via SMTP. Failures don't break the underlying user
-  action (`@_safe` decorator on every notification call).
-- A user can opt in/out of email notifications. On first login they get a
-  one-shot modal asking. They can change it later under their profile.
-- **Future** — web-push for "phone notifications" (VAPID keys + service
-  worker) is deferred but the opt-in flag and notification interface are
-  shaped so it can be added without changing call-sites.
+- **Email delivery** — always written to the DB outbox + stdout. If
+  `SMTP_HOST` is set, also attempted via SMTP. Failures don't break the
+  underlying user action (`@_safe` decorator on every notification call).
+- **Password reset** — `POST /auth/forgot-password` always returns 204 (to
+  avoid email enumeration). When the address matches a real user a token is
+  generated and emailed via the same pipeline; the user follows
+  `/nulstil-adgangskode?token=…` to set a new password.
+- **Web push** — opt-in per device on the profile page. The service worker
+  at `/service-worker.js` displays the notification and routes clicks to the
+  related event. Backed by VAPID keys; the backend auto-generates an
+  ephemeral keypair if `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` are unset
+  (development only — production must set them so subscriptions survive
+  restarts).
+- A user can opt in/out of notifications (email + push share the same
+  toggle). On first login they get a one-shot modal asking. They can change
+  it later under their profile.
 
 ## 8. Summerhouse scrape
 
@@ -246,8 +258,11 @@ tool.
 
 ## 9. Maps
 
-- We use the keyless Google-Maps embed iframe (`/maps?q=...`) — no API key
-  required.
+- When `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set, the app uses the official
+  Google **Maps Embed API** (`/maps/embed/v1/place?key=...`) — no
+  "for development purposes only" watermark and a richer pin.
+- Without a key the app falls back to the keyless `?q=…&output=embed` form,
+  which works for casual use but is technically unsupported by Google.
 - The mini-map tile in the event header is click-through: it opens
   `event.location_url` if set, otherwise a Google Maps search of the address.
 - Mobile is the priority: it must be one tap from the event to "open in
@@ -257,8 +272,8 @@ tool.
 
 - `/login` — email + password.
 - `/register?token=…` — invite landing (sets name + password).
-- `/glemt-adgangskode` — forgot-password landing (real reset email is
-  deferred).
+- `/glemt-adgangskode` — forgot-password landing.
+- `/nulstil-adgangskode?token=…` — set-new-password landing.
 - `/` — home with next-event hero and quick-action.
 - `/arrangementer` — list of all events.
 - `/arrangementer/[id]` — event detail (header + tabs).
@@ -279,17 +294,30 @@ tool.
 
 ## 12. Future / nice-to-have
 
-- Real password-reset emails.
-- Web-push notifications (VAPID + service worker).
-- Live updates over WebSockets (today: TanStack Query polling).
-- Family / child profile-picture upload UI (backend already supports it).
-- Event photo upload UI
-- Event photo gallery
-- Event group photo
-- Events history gallery with dias mode (image carousel)
-- Maps API integration with a key (today: keyless iframe).
+- Event photo upload UI.
+- Event photo gallery.
+- Event group photo.
+- Events history gallery with "dias" mode (image carousel).
 - Bulk import of past events / photos.
 - Backup / restore of the database.
-- Group photo event automatically created on the date most users are attending.
-- Chors are generated from a list of possible chors. Adjustment: first day only has dinner, last day only has breakfast.
-- Add the ability to join as assistant for a chor. When a user select a chor they can specify how many assistants they need.
+- Group photo event automatically created on the date most users are
+  attending.
+- Chors generated from a list of possible chors. Adjustment: first day only
+  has dinner, last day only has breakfast.
+- Ability to join as an assistant for a chor. When a user picks a chor they
+  can specify how many assistants they need.
+
+### Recently shipped (was on this list)
+
+- Real password-reset emails — fully wired end-to-end. Set `SMTP_HOST` and
+  friends in `.env` to deliver real mail; otherwise the dev outbox writes
+  rows to `email_outbox` so you can copy the link out manually.
+- Web-push notifications via VAPID + service worker — opt in per device on
+  the profile page. Falls back to email when push is unavailable.
+- Live chat updates over Server-Sent Events (`GET /api/v1/chat/stream`).
+  Replaces the 5-second polling; falls back to a 30-second safety poll if
+  the browser cannot keep an EventSource open.
+- Family + child profile-picture upload UI on the profile page.
+- Maps Embed API key support — set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` and the
+  app uses the official Embed API; without a key it falls back to the
+  keyless `?q=…&output=embed` form.

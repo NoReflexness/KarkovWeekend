@@ -53,6 +53,24 @@ class Settings(BaseSettings):
     # this to 0 to flush immediately.
     notification_debounce_seconds: int = 60
 
+    # Chat live-update stream (SSE). The endpoint polls the database every
+    # `chat_stream_poll_seconds`, emits keepalives every ~25s, and auto-closes
+    # after `chat_stream_max_seconds` so the client reconnects on a fresh DB
+    # session. Tests may set the poll interval to 0 to drain immediately.
+    chat_stream_poll_seconds: float = 1.5
+    chat_stream_max_seconds: float = 300.0
+    chat_stream_keepalive_seconds: float = 25.0
+
+    # Web Push (VAPID). When set, /push endpoints use these keys to send
+    # notifications to opted-in users. If unset, the backend auto-generates an
+    # ephemeral keypair on startup *for development only* — these keys do not
+    # survive restarts, so production deployments must set them explicitly.
+    # `vapid_private_key` is a PEM-encoded EC private key (P-256). The matching
+    # `vapid_public_key` is a base64url-encoded uncompressed point.
+    vapid_private_key: str | None = None
+    vapid_public_key: str | None = None
+    vapid_subject: str = "mailto:no-reply@karkov.example.com"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { da } from "@/i18n/da";
-import { formatDateRange } from "@/lib/format";
+import { formatDateRange, mapsEmbedUrl, mapsOpenUrl } from "@/lib/format";
 import type { KarkovEvent, User } from "@/lib/types";
 
 import { Badge } from "@/components/ui/badge";
@@ -56,14 +56,8 @@ export default function EventDetailPage({
     : null;
 
   const mapQuery = event.address ?? event.location_url;
-  const mapEmbed = mapQuery
-    ? `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`
-    : null;
-  const mapOpenUrl =
-    event.location_url ??
-    (mapQuery
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
-      : null);
+  const mapEmbed = mapsEmbedUrl(mapQuery);
+  const mapOpenUrl = event.location_url ?? mapsOpenUrl(mapQuery);
 
   return (
     <EventDetailBody

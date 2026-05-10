@@ -46,3 +46,35 @@ export function publicUrl(path: string | null | undefined): string | undefined {
     "http://localhost:8000";
   return `${base}${path}`;
 }
+
+/**
+ * Build a Google Maps embed URL.
+ *
+ * If `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set we use the official Maps Embed
+ * API (no "for development purposes only" watermark, supports more parameters).
+ * Otherwise we fall back to the keyless `?q=...&output=embed` form, which
+ * works without an API key but is technically unsupported by Google.
+ */
+export function mapsEmbedUrl(query: string | null | undefined): string | null {
+  if (!query) return null;
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const q = encodeURIComponent(trimmed);
+  if (key) {
+    return `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(
+      key,
+    )}&q=${q}`;
+  }
+  return `https://www.google.com/maps?q=${q}&output=embed`;
+}
+
+/** External "open in Maps" link, with API key when available. */
+export function mapsOpenUrl(query: string | null | undefined): string | null {
+  if (!query) return null;
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    trimmed,
+  )}`;
+}

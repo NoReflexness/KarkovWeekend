@@ -115,6 +115,66 @@ def test_profile_picture_upload(client):
     assert me["profile_picture_url"] is not None
 
 
+_PNG_1X1 = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000d49444154789c63000100000005000100"
+    "0000000049454e44ae426082"
+)
+
+
+def _png_files(name="avatar.png"):
+    return {"file": (name, io.BytesIO(_PNG_1X1), "image/png")}
+
+
+def test_family_picture_upload_by_member(client):
+    fid = _bootstrap_parent(client)
+    r = client.post(f"/api/v1/families/{fid}/profile-picture", files=_png_files("fam.png"))
+    assert r.status_code == 200, r.text
+    assert r.json()["profile_picture_url"].endswith(".png")
+
+
+def test_family_picture_upload_other_family_forbidden(client):
+    fid_a = _bootstrap_parent(client, email="a@example.com")
+    client.post("/api/v1/auth/logout")
+    _bootstrap_parent(client, email="b@example.com")
+    r = client.post(f"/api/v1/families/{fid_a}/profile-picture", files=_png_files())
+    assert r.status_code == 403
+
+
+def test_child_picture_upload_by_parent(client):
+    _bootstrap_parent(client)
+    child_id = client.post(
+        "/api/v1/me/children", json={"name": "Liva", "birthdate": "2020-04-01"}
+    ).json()["id"]
+    r = client.post(
+        f"/api/v1/children/{child_id}/profile-picture", files=_png_files("liva.png")
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["profile_picture_url"].endswith(".png")
+
+
+def test_child_picture_upload_other_family_forbidden(client):
+    _bootstrap_parent(client, email="a@example.com")
+    child_id = client.post(
+        "/api/v1/me/children", json={"name": "K", "birthdate": "2018-01-01"}
+    ).json()["id"]
+    client.post("/api/v1/auth/logout")
+    _bootstrap_parent(client, email="b@example.com")
+    r = client.post(f"/api/v1/children/{child_id}/profile-picture", files=_png_files())
+    assert r.status_code == 403
+
+
+def test_child_picture_upload_admin_can_override(client):
+    _bootstrap_parent(client)
+    child_id = client.post(
+        "/api/v1/me/children", json={"name": "K", "birthdate": "2018-01-01"}
+    ).json()["id"]
+    client.post("/api/v1/auth/logout")
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    r = client.post(f"/api/v1/children/{child_id}/profile-picture", files=_png_files())
+    assert r.status_code == 200
+
+
 def test_admin_can_create_child_for_a_parent(client):
     fid = _bootstrap_parent(client)
     parent_id = client.get("/api/v1/auth/me").json()["id"]

@@ -1,7 +1,23 @@
 """Chat API + notification side effects."""
 
+import json
+
+import pytest
+
+from app.core.config import get_settings
+
 ADMIN_EMAIL = "admin@karkov.example.com"
 ADMIN_PASSWORD = "admin-test-password"
+
+
+@pytest.fixture
+def fast_chat_stream(monkeypatch):
+    """Make `/chat/stream` drain immediately and return after one pass."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "chat_stream_poll_seconds", 0.0, raising=False)
+    monkeypatch.setattr(settings, "chat_stream_max_seconds", 5.0, raising=False)
+    monkeypatch.setattr(settings, "chat_stream_keepalive_seconds", 1.0, raising=False)
+    yield settings
 
 
 def _login(client, email: str, pw: str):
@@ -144,3 +160,49 @@ def test_dismiss_notify_prompt_does_not_set_pref(client):
     r = client.post("/api/v1/chat/notify-pref/dismiss").json()
     assert r["needs_prompt"] is False
     assert r["notify_email"] is None
+
+
+def _read_sse_events(stream_response) -> list[dict]:
+    out: list[dict] = []
+    event: str | None = None
+    data_lines: list[str] = []
+    body = stream_response.text
+    for raw in body.splitlines():
+        if raw.startswith(":"):
+            continue
+        if raw == "":
+            if event and data_lines:
+                payload = "\n".join(data_lines)
+                try:
+                    out.append({"event": event, "data": json.loads(payload)})
+                except json.JSONDecodeError:
+                    out.append({"event": event, "data": payload})
+            event = None
+            data_lines = []
+            continue
+        if raw.startswith("event:"):
+            event = raw.removeprefix("event:").strip()
+        elif raw.startswith("data:"):
+            data_lines.append(raw.removeprefix("data:").lstrip())
+    return out
+
+
+def test_chat_stream_returns_new_messages(client, fast_chat_stream):
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    a = client.post("/api/v1/chat/messages", json={"body": "hej en"}).json()
+    client.post("/api/v1/chat/messages", json={"body": "hej to"})
+    r = client.get(f"/api/v1/chat/stream?since_id={a['id']}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    events = _read_sse_events(r)
+    msg_events = [e for e in events if e["event"] == "messages"]
+    assert msg_events, events
+    bodies = [m["body"] for batch in msg_events for m in batch["data"]]
+    assert "hej to" in bodies
+    assert "hej en" not in bodies
+
+
+def test_chat_stream_requires_auth(client):
+    client.post("/api/v1/auth/logout")
+    r = client.get("/api/v1/chat/stream")
+    assert r.status_code == 401

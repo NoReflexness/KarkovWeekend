@@ -43,11 +43,12 @@ Den fulde produktbeskrivelse ligger i [`prompt.md`](./prompt.md).
 
 ### Chat & notifikationer
 
-- **Globalt chat-rum** med daglige date-separators og auto-scroll. Polling hver 5. sekund.
-- **Notifikationerne**: oprettelse af event, tilføjelse af feriehus til et event uden, ændringer i tilmelding, oprettelse/tilmelding til aktivitet, valg af gøremål og afslutning af event ryger som system-besked i chatten med ikon og link til eventet.
-- **Email-notifikationer** til opt-in voksne (eksklusive aktøren). DB-outbox er altid på; SMTP fyrer hvis `SMTP_HOST` er sat.
-- **Opt-in modal** vises ved første login, kan altid ændres fra profilen.
-- **Web-push** (telefon-notifikationer) er klargjort i interfacet, men implementeres senere.
+- **Globalt chat-rum** med daglige date-separators og auto-scroll.
+- **Live opdateringer** via Server-Sent Events (`GET /api/v1/chat/stream`) — nye beskeder dukker op uden refresh. 30-sekunders sikkerhedspolling tager over hvis EventSource fejler.
+- **Notifikationerne**: oprettelse af event, tilføjelse af feriehus til et event uden, ændringer i tilmelding, oprettelse/tilmelding til aktivitet, valg af gøremål og afslutning af event ryger som system-besked i chatten med ikon og link til eventet — samt fan-out til opt-in voksne over **email** og **web push** (eksklusive aktøren).
+- **Email-notifikationer**: DB-outbox er altid på; SMTP fyrer hvis `SMTP_HOST` er sat. Password-reset-mails går igennem samme pipeline.
+- **Web-push**: opt-in pr. enhed på `/profil`. Service worker (`/service-worker.js`) viser notifikationen og dybde-linker til eventet. Backenden auto-genererer et VAPID-nøglepar i dev hvis `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` ikke er sat — produktion bør altid sætte dem så abonnementer overlever genstart.
+- **Opt-in modal** vises ved første login og styrer både email og push. Kan altid ændres fra profilen.
 
 ### Feriehus-scrape
 
@@ -135,6 +136,9 @@ Alt sættes via miljøvariabler. `.env.example` viser standardværdier for udvik
 | `COOKIE_SECURE` / `COOKIE_SAMESITE`             | Cookie-flags (sæt `COOKIE_SECURE=true` i prod).                                     |
 | `CORS_ORIGINS`                                  | JSON-liste af tilladte origins.                                                     |
 | `SMTP_HOST` (+ port, user, pw, tls)             | Sættes hvis emails skal sendes rigtigt. Hvis tom skrives kun til outbox + stdout.   |
+| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY`        | Web-push-nøgler. Hvis tomme genereres et midlertidigt par i dev (taber abonnementer ved restart). |
+| `VAPID_SUBJECT`                                 | `mailto:` eller URL der identificerer afsenderen i push-headerne.                    |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`               | Frontend-nøgle. Sat: bruger Maps Embed API. Tom: keyless `?q=…&output=embed`.       |
 
 ## Produktion
 
@@ -149,11 +153,13 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ## Ikke med endnu (deferred)
 
-- Rigtig password-reset-email (siden findes, men afsendelse er stub).
-- Web-push notifikationer (interface er klar, mangler VAPID + service worker).
-- Live updates over WebSockets (i dag: TanStack Query polling).
-- Upload-UI for familie/barn profilbilleder (backend understøtter det).
-- Maps med rigtig API-nøgle (i dag: keyless iframe).
+- Event-billed-upload + galleri (gruppe- og enkeltbilleder pr. event,
+  historisk dias-mode).
+- Bulk-import af tidligere events / billeder.
+- Backup / restore af databasen.
+- Auto-oprettelse af gruppefoto-event på den dag flest deltager.
+- Smartere chor-generering (første dag uden morgenmad, sidste dag uden
+  aftensmad, "assistent"-rolle).
 
 ---
 
@@ -194,7 +200,12 @@ cd frontend && npm run test:e2e
 
 ### Deferred
 
-Real password-reset emails, web-push notifications, real-time websocket updates, family/child picture upload UI, and Maps API key integration are deliberately deferred and clearly stubbed behind interfaces (`EmailSender`, the notification queue, etc).
+Event photo upload/gallery, bulk import of past events/photos, database
+backup/restore, auto-generated group-photo events and smarter chor templates
+are deliberately left out of this release. Real password-reset emails,
+web-push notifications, live chat updates over SSE, family/child picture
+upload UI, and Maps API key integration are now shipped — see the "Recently
+shipped" subsection in [`prompt.md`](./prompt.md) for details.
 
 ---
 

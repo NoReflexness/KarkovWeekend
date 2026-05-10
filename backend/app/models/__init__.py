@@ -13,6 +13,7 @@ from app.models.invite_token import InviteToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.pending_notification import PendingNotification, PendingNotificationKind
 from app.models.pricing_rules import PricingRules
+from app.models.push_subscription import PushSubscription
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "PendingNotification",
     "PendingNotificationKind",
     "PricingRules",
+    "PushSubscription",
     "User",
     "UserRole",
 ]
