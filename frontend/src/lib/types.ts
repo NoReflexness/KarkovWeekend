@@ -9,6 +9,7 @@ export interface User {
   profile_picture_url: string | null;
   birthdate: string | null;
   parent_user_id: number | null;
+  has_password: boolean;
 }
 
 export interface AttendeeSummary {
@@ -145,6 +146,19 @@ export interface Invite {
 export interface InviteSendResult {
   sent: number;
   invites: Invite[];
+}
+
+export interface SetupLinkRecipient {
+  user_id: number | null;
+  invite_id: number | null;
+  email: string;
+  source: "password_reset" | "invite_token";
+}
+
+export interface SetupLinkResult {
+  sent: number;
+  skipped_no_email: number;
+  recipients: SetupLinkRecipient[];
 }
 
 export interface PricingRules {

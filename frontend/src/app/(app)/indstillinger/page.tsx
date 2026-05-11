@@ -31,8 +31,8 @@ import type {
   ExpenseCategory,
   Family,
   Invite,
-  InviteSendResult,
   PricingRules,
+  SetupLinkResult,
   User,
 } from "@/lib/types";
 import { ageOn, categoryLabel, categoryVariant, classifyAge } from "@/lib/age";
@@ -317,7 +317,8 @@ function FamilyAdminCard({
     queryFn: () => api.get<Invite[]>(`/families/${family.id}/invites`),
   });
   const pending = pendingInvites ?? [];
-  const unsentCount = pending.length;
+  const passwordlessParents = parents.filter((p) => !p.has_password && p.email);
+  const setupCount = pending.length + passwordlessParents.length;
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["families"] });
@@ -338,9 +339,9 @@ function FamilyAdminCard({
 
   const sendAll = useMutation({
     mutationFn: () =>
-      api.post<InviteSendResult>(`/families/${family.id}/invites/send-pending`, {}),
+      api.post<SetupLinkResult>(`/families/${family.id}/send-setup-links`, {}),
     onSuccess: (res) => {
-      toast.success(da.family.sentToast(res.sent));
+      toast.success(da.family.setupSentToast(res.sent, res.skipped_no_email));
       invalidateAll();
     },
     onError: (e) => e instanceof ApiError && toast.error(e.message),
@@ -565,19 +566,31 @@ function FamilyAdminCard({
             </DialogContent>
           </Dialog>
 
-          <Button
-            size="sm"
-            onClick={() => sendAll.mutate()}
-            disabled={unsentCount === 0 || sendAll.isPending}
-          >
-            <Send className="size-4" />
-            {da.family.sendAll}
-            {unsentCount > 0 && (
-              <Badge variant="secondary" className="ml-1">
-                {unsentCount}
-              </Badge>
-            )}
-          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button
+                size="sm"
+                disabled={setupCount === 0 || sendAll.isPending}
+                title={
+                  setupCount === 0
+                    ? da.family.sendSetupNoneTooltip
+                    : da.family.sendSetupTooltip(setupCount)
+                }
+              >
+                <Send className="size-4" />
+                {da.family.sendSetup}
+                {setupCount > 0 && (
+                  <Badge variant="secondary" className="ml-1">
+                    {setupCount}
+                  </Badge>
+                )}
+              </Button>
+            }
+            title={da.family.sendSetupConfirmTitle(family.name)}
+            description={da.family.sendSetupConfirmBody(setupCount)}
+            confirmLabel={da.family.sendSetup}
+            onConfirm={() => sendAll.mutateAsync()}
+          />
 
           <ConfirmDialog
             trigger={
@@ -616,12 +629,17 @@ function FamilyAdminCard({
                   <AvatarFallback>{m.name.slice(0, 2).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="text-sm flex-1 min-w-0">
-                  <p className="font-medium flex items-center gap-2">
+                  <p className="font-medium flex items-center gap-2 flex-wrap">
                     {m.name}
                     {m.role === "admin" && (
                       <Badge variant="default" className="gap-1">
                         <ShieldCheck className="size-3" />
                         {da.family.adminBadge}
+                      </Badge>
+                    )}
+                    {!m.has_password && (
+                      <Badge variant="outline" className="gap-1 text-amber-600 dark:text-amber-300 border-amber-400/50">
+                        {da.family.notActivatedBadge}
                       </Badge>
                     )}
                   </p>

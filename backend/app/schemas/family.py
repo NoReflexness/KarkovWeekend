@@ -42,3 +42,24 @@ class InviteOut(BaseModel):
 class InviteSendResult(BaseModel):
     sent: int
     invites: list[InviteOut]
+
+
+class SetupLinkRecipient(BaseModel):
+    """Summary entry for a `send-setup-links` recipient.
+
+    Source distinguishes pre-existing parents (sent a password-reset token via
+    /nulstil-adgangskode) from invite-token rows (sent the classic invite
+    /registrer link). Both produce a one-shot URL that lets the user pick a
+    password.
+    """
+
+    user_id: int | None = None
+    invite_id: int | None = None
+    email: str
+    source: str  # "password_reset" | "invite_token"
+
+
+class SetupLinkResult(BaseModel):
+    sent: int
+    skipped_no_email: int
+    recipients: list[SetupLinkRecipient]

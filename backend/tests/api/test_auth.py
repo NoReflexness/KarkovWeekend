@@ -196,6 +196,106 @@ def test_invite_with_notify_true_sends_email(client):
     assert inv.json()["notified_at"] is not None
 
 
+def test_send_setup_links_for_passwordless_yaml_imports(client):
+    """YAML-imported parents have no password and no invite token. The bulk
+    setup-links button must still reach them via password-reset emails."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    yaml_doc = (
+        "families:\n"
+        "  - name: ImportedFam\n"
+        "    members:\n"
+        "      - name: Yaml Parent\n"
+        "        email: yaml.parent@example.com\n"
+        "        role: parent\n"
+    )
+    r = client.post(
+        "/api/v1/admin/families/import",
+        json={"yaml": yaml_doc},
+    )
+    assert r.status_code == 200, r.text
+
+    families = client.get("/api/v1/families").json()
+    fid = next(f["id"] for f in families if f["name"] == "ImportedFam")
+    member = next(m for m in client.get(f"/api/v1/families/{fid}").json()["members"]
+                  if m["email"] == "yaml.parent@example.com")
+    assert member["has_password"] is False
+
+    result = client.post(f"/api/v1/families/{fid}/send-setup-links").json()
+    assert result["sent"] == 1
+    assert result["recipients"][0]["email"] == "yaml.parent@example.com"
+    assert result["recipients"][0]["source"] == "password_reset"
+
+    last = client.get("/api/v1/_debug/last-email").json()
+    assert last["to"] == "yaml.parent@example.com"
+    assert "token=" in last["body"]
+    token = last["body"].split("token=")[1].splitlines()[0].strip()
+
+    client.post("/api/v1/auth/logout")
+    reset = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "fresh-pw-789"},
+    )
+    assert reset.status_code == 204
+    assert _login(client, "yaml.parent@example.com", "fresh-pw-789").status_code == 200
+
+
+def test_send_setup_links_combines_invites_and_passwordless(client):
+    """Both open invite tokens and passwordless users get covered in one call."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid = client.post("/api/v1/families", json={"name": "Mixed"}).json()["id"]
+    # Open invite token.
+    client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "invited@example.com"}
+    )
+    # Passwordless user inserted via YAML import.
+    yaml_doc = (
+        "families:\n"
+        "  - name: Mixed\n"
+        "    members:\n"
+        "      - name: Imported\n"
+        "        email: imp@example.com\n"
+    )
+    client.post(
+        "/api/v1/admin/families/import",
+        json={"yaml": yaml_doc},
+    )
+
+    result = client.post(f"/api/v1/families/{fid}/send-setup-links").json()
+    assert result["sent"] == 2
+    sources = {r["email"]: r["source"] for r in result["recipients"]}
+    assert sources == {
+        "invited@example.com": "invite_token",
+        "imp@example.com": "password_reset",
+    }
+
+
+def test_send_setup_links_skips_already_active(client):
+    """Parents who already set a password are NOT spammed. Avoids the
+    foot-gun where clicking the bulk button resets every existing user."""
+    fid = _bootstrap_setup_links_active_parent(client)
+    # All parents already have passwords -> nothing to send.
+    result = client.post(f"/api/v1/families/{fid}/send-setup-links").json()
+    assert result["sent"] == 0
+    assert result["recipients"] == []
+
+
+def _bootstrap_setup_links_active_parent(client):
+    """Helper: a family with one parent who completed registration."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid = client.post("/api/v1/families", json={"name": "Active"}).json()["id"]
+    inv = client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "active@example.com"}
+    ).json()
+    client.post("/api/v1/auth/logout")
+    client.post(
+        "/api/v1/auth/register",
+        json={"token": inv["token"], "name": "A", "password": "password123"},
+    )
+    client.post("/api/v1/auth/logout")
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    return fid
+
+
 def test_resend_invite_works_even_after_notified(client):
     """Bulk send-pending marked the invite as notified, but SMTP silently
     failed (pre-fix). The per-invite resend endpoint must still deliver."""

@@ -8,6 +8,7 @@ from app.core.security import now_utc, random_token
 from app.models.expense import Expense
 from app.models.family import Family
 from app.models.invite_token import InviteToken
+from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User, UserRole
 from app.schemas.family import (
     FamilyCreate,
@@ -16,6 +17,8 @@ from app.schemas.family import (
     InviteCreate,
     InviteOut,
     InviteSendResult,
+    SetupLinkRecipient,
+    SetupLinkResult,
 )
 from app.services.email import get_email_sender
 from app.services.uploads import save_profile_picture
@@ -201,6 +204,99 @@ def send_pending_invites(family_id: int, db: DbDep) -> InviteSendResult:
     for invite in sent_now:
         db.refresh(invite)
     return InviteSendResult(sent=len(sent_now), invites=[_invite_to_out(i) for i in sent_now])
+
+
+@router.post(
+    "/{family_id}/send-setup-links",
+    response_model=SetupLinkResult,
+    dependencies=[Depends(require_admin)],
+)
+def send_setup_links(family_id: int, db: DbDep) -> SetupLinkResult:
+    """Send a one-shot "pick a password" link to everyone in this family who
+    can't yet log in.
+
+    Two cohorts get included:
+    - Parents / admins that exist as `User` rows but have no `password_hash`
+      (typically created via YAML import). They get a `PasswordResetToken`
+      and the standard /nulstil-adgangskode link, 24h TTL.
+    - Open invite tokens (`InviteToken.used_at IS NULL`). They get the
+      classic invite email with the /registrer link. This piggy-backs on
+      the same button so admins don't have to think about two flows.
+
+    Users without an email are skipped (no delivery channel) and counted in
+    `skipped_no_email`. Idempotent: clicking the button repeatedly issues
+    fresh tokens each time; old unused tokens remain valid until they expire
+    on their own.
+    """
+    fam = db.get(Family, family_id)
+    if fam is None:
+        raise HTTPException(status_code=404, detail="Familie findes ikke")
+
+    settings = get_settings()
+    sender = get_email_sender()
+    recipients: list[SetupLinkRecipient] = []
+    skipped_no_email = 0
+
+    passwordless = (
+        db.query(User)
+        .filter(
+            User.family_id == family_id,
+            User.role != UserRole.CHILD,
+            User.password_hash.is_(None),
+        )
+        .all()
+    )
+    for u in passwordless:
+        if not u.email:
+            skipped_no_email += 1
+            continue
+        token = random_token()
+        prt = PasswordResetToken(
+            token=token,
+            user_id=u.id,
+            expires_at=now_utc() + timedelta(hours=24),
+        )
+        db.add(prt)
+        body = (
+            "Hej {name},\n\nVelkommen til Karkov Weekend! Vælg en adgangskode "
+            "for at komme i gang:\n{base}/nulstil-adgangskode?token={token}\n\n"
+            "Linket udløber om 24 timer."
+        ).format(name=u.name, base=settings.public_base_url, token=token)
+        sender.send(db, to=u.email, subject=f"Opsætning af {fam.name}", body=body)
+        recipients.append(
+            SetupLinkRecipient(
+                user_id=u.id, email=u.email, source="password_reset"
+            )
+        )
+
+    open_invites = (
+        db.query(InviteToken)
+        .filter(
+            InviteToken.family_id == family_id,
+            InviteToken.used_at.is_(None),
+        )
+        .all()
+    )
+    for inv in open_invites:
+        sender.send(
+            db,
+            to=inv.email,
+            subject=f"Invitation til {fam.name}",
+            body=_invite_email_body(fam, inv),
+        )
+        inv.notified_at = now_utc()
+        recipients.append(
+            SetupLinkRecipient(
+                invite_id=inv.id, email=inv.email, source="invite_token"
+            )
+        )
+
+    db.commit()
+    return SetupLinkResult(
+        sent=len(recipients),
+        skipped_no_email=skipped_no_email,
+        recipients=recipients,
+    )
 
 
 @router.post(

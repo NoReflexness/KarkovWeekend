@@ -37,6 +37,10 @@ class UserOut(BaseModel):
     profile_picture_url: str | None
     birthdate: date | None
     parent_user_id: int | None
+    # True iff the user has a password set. Admins use this to identify
+    # imported-via-YAML users who haven't been "activated" yet, so they can
+    # send them a setup link. Computed from `User.has_password` property.
+    has_password: bool = False
 
 
 class LoginResponse(BaseModel):

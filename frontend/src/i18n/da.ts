@@ -166,6 +166,25 @@ export const da = {
     sendAll: "Send/genudsend alle",
     sentToast: (n: number) =>
       n === 0 ? "Ingen invitationer at sende" : `${n} invitation${n === 1 ? "" : "er"} sendt`,
+    sendSetup: "Send opsætningslinks",
+    sendSetupTooltip: (n: number) =>
+      `Send opsætningslink til ${n} forælder${n === 1 ? "" : "/forældre"} i denne familie`,
+    sendSetupNoneTooltip: "Alle forældre i denne familie har allerede en adgangskode",
+    sendSetupConfirmTitle: (name: string) =>
+      `Send opsætningslinks til ${name}?`,
+    sendSetupConfirmBody: (n: number) =>
+      n === 1
+        ? "1 forælder modtager en email med et link til at vælge en adgangskode. Linket er gyldigt i 24 timer."
+        : `${n} forældre modtager en email med et link til at vælge en adgangskode. Linkene er gyldige i 24 timer.`,
+    setupSentToast: (sent: number, skipped: number) => {
+      const base = sent === 0
+        ? "Ingen opsætningslinks sendt"
+        : `${sent} opsætningslink${sent === 1 ? "" : "s"} sendt`;
+      return skipped > 0
+        ? `${base} (${skipped} sprunget over: ingen email)`
+        : base;
+    },
+    notActivatedBadge: "Mangler adgangskode",
     cancelInvite: "Annullér",
     resendInvite: "Send invitationen igen",
     resentToast: "Invitation sendt igen",

@@ -71,3 +71,7 @@ class User(Base):
     @property
     def is_child(self) -> bool:
         return self.role == UserRole.CHILD
+
+    @property
+    def has_password(self) -> bool:
+        return bool(self.password_hash)
