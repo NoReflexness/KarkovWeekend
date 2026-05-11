@@ -33,6 +33,19 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
       CORS_ORIGINS: '["http://localhost:3000"]'
+      # Outbound SMTP (empty = outbox-only). Set these in .env to enable real delivery.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-no-reply@karkov.example.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Karkov Weekend}
+      # Web push (empty = ephemeral keypair on boot; subscriptions reset on restart).
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@karkov.example.com}
     volumes:
       - uploads:/app/uploads
     ports:
