@@ -4,6 +4,10 @@
 # Web Push VAPID key material (generate locally; never commit)
 vapid.pem
 
+# Auth cookies dumped by curl during local testing
+cookies.txt
+cookies-*.txt
+
 # Python
 __pycache__/
 *.pyc
