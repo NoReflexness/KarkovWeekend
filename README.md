@@ -144,20 +144,17 @@ Everything is configured through environment variables. `.env.example` shows the
 
 ```bash
 cp .env.example .env
-$EDITOR .env                  # set PUBLIC_BASE_URL=https://your-domain, secrets, admin password, SMTP, VAPID
+$EDITOR .env                  # PUBLIC_BASE_URL (invite links), secrets, admin password, SMTP, VAPID
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-The shipped `Caddyfile` is wired for `karkovweekend.dk` plus a catch-all `http://` block for bare LAN/public IP access. Edit the hostname to match your domain.
+The production frontend build **pins** **`NEXT_PUBLIC_API_BASE_URL=/api/v1`** in `docker-compose.prod.yml` so API calls stay on the **same host** as the UI (LAN IP or public hostname). That avoids cross-origin cookie/CORS problems. Do **not** rely on `NEXT_PUBLIC_*` lines copied from `.env.example` for this Docker prod image.
 
-Router (e.g. UniFi): forward **WAN TCP 80 → host:80** and **WAN TCP 443 → host:443** to the host running Docker (Caddy listens on 80/443). Both ports are required — 80 for Let's Encrypt and for HTTP redirects, 443 for HTTPS.
+**Router** (e.g. UniFi): forward **WAN TCP 80 → host:80** and **WAN TCP 443 → host:443**. Both are usually required for Let's Encrypt and HTTPS.
 
-The production frontend image is built with **`NEXT_PUBLIC_API_BASE_URL=/api/v1`** (same origin as the browser) so login cookies work from both your LAN IP and the real hostname. Do **not** point this at `localhost` in `.env` for the Docker prod stack — `docker-compose.prod.yml` hard-codes `/api/v1` for the build args.
+**Troubleshooting:** If LAN/WAN cannot reach the site: allow **80/tcp** and **443/tcp** on the firewall (e.g. UFW). If `docker ps` shows Caddy **without** `0.0.0.0:80->80/tcp`, free ports 80/443 and recreate the stack (`docker compose -f docker-compose.prod.yml down && docker compose -f docker-compose.prod.yml up -d`).
 
-**Troubleshooting.** Can't reach the site from other LAN devices or the internet, even though `docker compose` is running?
-
-1. Host firewall (e.g. UFW): allow `80/tcp` and `443/tcp` inbound.
-2. `docker ps` doesn't show `0.0.0.0:80->80/tcp` on `caddy`: nothing else may bind 80/443 — recreate with `docker compose -f docker-compose.prod.yml down && docker compose -f docker-compose.prod.yml up -d` to re-establish the port mapping.
+[`Caddyfile`](./Caddyfile) is set up for **karkovweekend.dk** (HTTPS plus plain HTTP for bare IP/LAN testing); edit the site block if you use another domain.
 
 ## Not in this release (deferred)
 
