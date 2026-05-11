@@ -229,6 +229,79 @@ def test_list_users_parent_sees_only_own_family(client):
     assert emails == {"b@example.com"}
 
 
+def test_admin_can_attach_self_to_family(client):
+    """Admins start without a family. Admin can PATCH their own family_id."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    me = client.get("/api/v1/auth/me").json()
+    assert me["family_id"] is None
+    fid = client.post("/api/v1/families", json={"name": "Hjem"}).json()["id"]
+
+    r = client.patch(f"/api/v1/users/{me['id']}", json={"family_id": fid})
+    assert r.status_code == 200, r.text
+    assert r.json()["family_id"] == fid
+
+
+def test_admin_can_detach_user_with_null_family_id(client):
+    _bootstrap_parent(client)
+    me = client.get("/api/v1/auth/me").json()
+    assert me["family_id"] is not None
+    client.post("/api/v1/auth/logout")
+
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    r = client.patch(f"/api/v1/users/{me['id']}", json={"family_id": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["family_id"] is None
+
+
+def test_admin_family_id_change_cascades_to_children(client):
+    _bootstrap_parent(client)
+    me = client.get("/api/v1/auth/me").json()
+    child = client.post(
+        "/api/v1/me/children", json={"name": "K", "birthdate": "2018-01-01"}
+    ).json()
+    assert child["family_id"] == me["family_id"]
+    client.post("/api/v1/auth/logout")
+
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    other = client.post("/api/v1/families", json={"name": "Anden"}).json()["id"]
+    r = client.patch(f"/api/v1/users/{me['id']}", json={"family_id": other})
+    assert r.status_code == 200, r.text
+
+    # Child must follow the parent into the new family.
+    refreshed_kids = client.get(
+        f"/api/v1/users?family_id={other}"
+    ).json()
+    assert any(u["id"] == child["id"] for u in refreshed_kids)
+
+
+def test_admin_family_id_unknown_family_404(client):
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    me = client.get("/api/v1/auth/me").json()
+    r = client.patch(f"/api/v1/users/{me['id']}", json={"family_id": 99999})
+    assert r.status_code == 404
+
+
+def test_non_admin_cannot_change_family_id(client):
+    """A parent can edit a same-family spouse's name, but not their family_id."""
+    _bootstrap_parent(client, email="a@example.com")
+    me = client.get("/api/v1/auth/me").json()
+    client.post("/api/v1/auth/logout")
+
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid2 = client.post("/api/v1/families", json={"name": "Anden"}).json()["id"]
+    invite_token = client.post(
+        f"/api/v1/families/{me['family_id']}/invites", json={"email": "b@example.com"}
+    ).json()["token"]
+    client.post("/api/v1/auth/logout")
+    client.post(
+        "/api/v1/auth/register",
+        json={"token": invite_token, "name": "B", "password": "password123"},
+    )
+    # `b` is logged in as a regular parent in the same family as `me`.
+    r = client.patch(f"/api/v1/users/{me['id']}", json={"family_id": fid2})
+    assert r.status_code == 403
+
+
 def test_list_expense_categories(client):
     _bootstrap_parent(client)
     r = client.get("/api/v1/expense-categories")

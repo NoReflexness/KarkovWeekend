@@ -219,3 +219,74 @@ def test_import_rejects_missing_family_name(client):
     yml = yaml.safe_dump({"families": [{"members": []}]})
     r = client.post("/api/v1/admin/families/import", json={"yaml": yml})
     assert r.status_code == 400
+
+
+def test_import_attaches_existing_orphan_admin_to_family(client):
+    """The bootstrap admin has no `family_id`. Listing them in a family
+    YAML should attach them instead of silently keeping the orphan state."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    me = client.get("/api/v1/auth/me").json()
+    assert me["family_id"] is None
+
+    yml = yaml.safe_dump(
+        {
+            "families": [
+                {
+                    "name": "Karkov",
+                    "members": [
+                        {
+                            "name": me["name"],
+                            "email": me["email"],
+                            "role": "admin",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    summary = client.post(
+        "/api/v1/admin/families/import", json={"yaml": yml}
+    ).json()
+    assert summary["families_created"] == 1
+    # Existing user attached (not created), so:
+    assert summary["parents_created"] == 0
+    assert summary["parents_attached"] == 1
+    assert summary["skipped"]["parents"] == 0
+
+    me_after = client.get("/api/v1/auth/me").json()
+    assert isinstance(me_after["family_id"], int)
+    fam = client.get(f"/api/v1/families/{me_after['family_id']}").json()
+    assert fam["name"] == "Karkov"
+
+
+def test_import_does_not_move_user_already_in_another_family(client):
+    """If a user already belongs to family A, listing them under family B
+    must not move them — that's a destructive change. They're skipped."""
+    fids = _seed_two_families(client)
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    # Alfa parent already in family A (id == fids["fa"]).
+    yml = yaml.safe_dump(
+        {
+            "families": [
+                {
+                    "name": "Beta",
+                    "members": [
+                        {
+                            "name": "Anders",
+                            "email": "alfa@example.com",
+                            "role": "parent",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    summary = client.post(
+        "/api/v1/admin/families/import", json={"yaml": yml}
+    ).json()
+    assert summary["parents_attached"] == 0
+    assert summary["skipped"]["parents"] == 1
+
+    users = client.get("/api/v1/users").json()
+    alfa = next(u for u in users if u["email"] == "alfa@example.com")
+    assert alfa["family_id"] == fids["fa"]

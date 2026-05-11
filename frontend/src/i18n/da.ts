@@ -228,13 +228,27 @@ export const da = {
     importDialogBody:
       "Indsæt YAML-indholdet her, eller vælg en fil. Eksisterende familier (matchet på navn), forældre (matchet på email) og børn (matchet på navn under forælder) springes over.",
     importPlaceholder: "families:\n  - name: ...\n    members: ...",
-    importSummary: (created: { families: number; parents: number; children: number }) =>
-      `Oprettet: ${created.families} familier, ${created.parents} forældre, ${created.children} børn.`,
+    importSummary: (created: {
+      families: number;
+      parents: number;
+      children: number;
+      parentsAttached: number;
+    }) => {
+      const base = `Oprettet: ${created.families} familier, ${created.parents} forældre, ${created.children} børn.`;
+      if (created.parentsAttached > 0) {
+        return `${base} Tilknyttet eksisterende: ${created.parentsAttached}.`;
+      }
+      return base;
+    },
     importFromFile: "Vælg fil",
     importSubmit: "Importér",
     exportFilename: "families.yaml",
     importedToast: "Import gennemført",
     exportedToast: "Eksport hentet",
+    orphanAdminBanner:
+      "Du er admin, men ikke knyttet til en familie. Vælg familien herunder for at tilknytte dig.",
+    attachMe: "Tilknyt mig her",
+    attachedToast: (name: string) => `Du er nu tilknyttet familien ${name}.`,
   },
   chat: {
     title: "Familie-chat",

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from app.core.deps import CurrentUser, DbDep
 from app.core.security import hash_password, verify_password
 from app.models.expense import Expense
+from app.models.family import Family
 from app.models.user import User, UserRole
 from app.schemas.auth import UserOut
 from app.schemas.user import (
@@ -137,6 +138,12 @@ def update_user(
             detail="Kun admin eller brugeren selv kan ændre adgangskoden",
         )
 
+    if "family_id" in payload.model_fields_set and not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Kun admin kan ændre brugerens familie",
+        )
+
     if payload.name is not None:
         target.name = payload.name
     if payload.birthdate is not None:
@@ -152,6 +159,19 @@ def update_user(
         target.email = new_email
     if payload.password is not None:
         target.password_hash = hash_password(payload.password)
+    if "family_id" in payload.model_fields_set:
+        new_family_id = payload.family_id
+        if new_family_id is not None:
+            if db.get(Family, new_family_id) is None:
+                raise HTTPException(status_code=404, detail="Familie findes ikke")
+        target.family_id = new_family_id
+        # Children inherit their parent's family. Keep that invariant when an
+        # admin moves a parent (or themselves, if they have child rows) so the
+        # kids don't get orphaned in a different family than their parent.
+        for child in (
+            db.query(User).filter(User.parent_user_id == target.id).all()
+        ):
+            child.family_id = new_family_id
     db.commit()
     db.refresh(target)
     return UserOut.model_validate(target)

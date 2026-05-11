@@ -149,6 +149,9 @@ class ImportSummary(BaseModel):
     families_created: int = 0
     parents_created: int = 0
     children_created: int = 0
+    # Existing users that were attached to a family (e.g. the bootstrap admin
+    # had no `family_id` and the YAML lists them under one).
+    parents_attached: int = 0
     skipped: dict[str, int] = Field(
         default_factory=lambda: {"families": 0, "parents": 0, "children": 0}
     )
@@ -208,7 +211,15 @@ def _import_member(
             db.query(User).filter(User.email == m_in.email.lower()).one_or_none()
         )
         if existing is not None:
-            summary.skipped["parents"] += 1
+            # Don't mutate users that already belong to another family — but if
+            # they're an orphan (e.g. the bootstrap admin), attach them now.
+            # Without this, listing the admin in the YAML did nothing and the
+            # admin remained without a family even though the import "succeeded".
+            if existing.family_id is None:
+                existing.family_id = fam.id
+                summary.parents_attached += 1
+            else:
+                summary.skipped["parents"] += 1
             return existing
     user = User(
         family_id=fam.id,

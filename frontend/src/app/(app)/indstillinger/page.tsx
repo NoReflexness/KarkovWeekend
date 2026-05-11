@@ -17,6 +17,8 @@ import {
   Pencil,
   Download,
   Upload,
+  Link2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -137,6 +139,21 @@ export default function SettingsPage() {
     onError: (e) => e instanceof ApiError && toast.error(e.message),
   });
 
+  // Admins start without a family. We surface a banner with a per-family
+  // attach button so they can wire themselves into a family without having
+  // to round-trip through the YAML import.
+  const { refresh: refreshAuth } = useAuth();
+  const attachSelfToFamily = useMutation({
+    mutationFn: ({ familyId }: { familyId: number; familyName: string }) =>
+      api.patch<User>(`/users/${user?.id}`, { family_id: familyId }),
+    onSuccess: async (_data, vars) => {
+      toast.success(da.admin.attachedToast(vars.familyName));
+      qc.invalidateQueries({ queryKey: ["families"] });
+      await refreshAuth();
+    },
+    onError: (e) => e instanceof ApiError && toast.error(e.message),
+  });
+
   if (user?.role !== "admin") {
     return <p className="text-muted-foreground">{da.admin.onlyAdmin}</p>;
   }
@@ -222,6 +239,12 @@ export default function SettingsPage() {
           </Dialog>
         </CardHeader>
         <CardContent className="grid gap-3">
+          {user.family_id === null && (families?.length ?? 0) > 0 && (
+            <div className="bg-amber-100/40 border-amber-400/40 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200 flex items-start gap-3 rounded-lg border p-3 text-sm">
+              <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+              <p>{da.admin.orphanAdminBanner}</p>
+            </div>
+          )}
           {families && families.length === 0 && (
             <p className="text-muted-foreground text-sm">{da.admin.noFamilies}</p>
           )}
@@ -231,6 +254,11 @@ export default function SettingsPage() {
               family={f}
               pricing={pricing}
               currentUserId={user.id}
+              currentUserIsOrphanAdmin={user.family_id === null}
+              onAttachSelf={() =>
+                attachSelfToFamily.mutate({ familyId: f.id, familyName: f.name })
+              }
+              attachPending={attachSelfToFamily.isPending}
             />
           ))}
         </CardContent>
@@ -243,10 +271,16 @@ function FamilyAdminCard({
   family,
   pricing,
   currentUserId,
+  currentUserIsOrphanAdmin,
+  onAttachSelf,
+  attachPending,
 }: {
   family: Family;
   pricing: PricingRules | undefined;
   currentUserId: number;
+  currentUserIsOrphanAdmin: boolean;
+  onAttachSelf: () => void;
+  attachPending: boolean;
 }) {
   const qc = useQueryClient();
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -393,6 +427,16 @@ function FamilyAdminCard({
           />
         </div>
         <div className="flex flex-wrap gap-2">
+          {currentUserIsOrphanAdmin && (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={onAttachSelf}
+              disabled={attachPending}
+            >
+              <Link2 className="size-4" /> {da.admin.attachMe}
+            </Button>
+          )}
           <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
             <DialogTrigger asChild>
               <Button size="sm" variant="outline">
@@ -895,6 +939,7 @@ type ImportSummaryDto = {
   families_created: number;
   parents_created: number;
   children_created: number;
+  parents_attached: number;
   skipped: { families: number; parents: number; children: number };
 };
 
@@ -913,6 +958,7 @@ function FamilyImportExportCard() {
           families: summary.families_created,
           parents: summary.parents_created,
           children: summary.children_created,
+          parentsAttached: summary.parents_attached,
         })}`,
       );
       setYamlText("");
