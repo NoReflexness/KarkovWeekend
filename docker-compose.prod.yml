@@ -37,7 +37,9 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_BASE_URL}/api/v1
+        # Always same-origin behind Caddy (LAN IP or domain). Do not use localhost here —
+        # a copied .env line would break login cookies in the browser.
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
     restart: unless-stopped
     depends_on:
       - backend

@@ -41,10 +41,14 @@ export function daysUntil(d: string): number {
 export function publicUrl(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
   if (path.startsWith("http")) return path;
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const trimmed = apiBase.trim();
+  if (trimmed.startsWith("/")) {
+    return path.startsWith("/") ? path : `/${path}`;
+  }
   const base =
-    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/api\/v1$/, "") ??
-    "http://localhost:8000";
-  return `${base}${path}`;
+    trimmed.replace(/\/api\/v1\/?$/, "") || "http://localhost:8000";
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 /**

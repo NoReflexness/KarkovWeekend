@@ -152,6 +152,8 @@ The shipped `Caddyfile` is wired for `karkovweekend.dk` plus a catch-all `http:/
 
 Router (e.g. UniFi): forward **WAN TCP 80 → host:80** and **WAN TCP 443 → host:443** to the host running Docker (Caddy listens on 80/443). Both ports are required — 80 for Let's Encrypt and for HTTP redirects, 443 for HTTPS.
 
+The production frontend image is built with **`NEXT_PUBLIC_API_BASE_URL=/api/v1`** (same origin as the browser) so login cookies work from both your LAN IP and the real hostname. Do **not** point this at `localhost` in `.env` for the Docker prod stack — `docker-compose.prod.yml` hard-codes `/api/v1` for the build args.
+
 **Troubleshooting.** Can't reach the site from other LAN devices or the internet, even though `docker compose` is running?
 
 1. Host firewall (e.g. UFW): allow `80/tcp` and `443/tcp` inbound.

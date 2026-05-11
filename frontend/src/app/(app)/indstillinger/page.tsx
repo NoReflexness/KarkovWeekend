@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { da } from "@/i18n/da";
 import type {
@@ -971,8 +971,7 @@ function FamilyImportExportCard() {
   const exportYaml = async () => {
     setExporting(true);
     try {
-      const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-      const res = await fetch(`${base}/admin/families/export`, {
+      const res = await fetch(`${API_BASE}/admin/families/export`, {
         credentials: "include",
       });
       if (!res.ok) {

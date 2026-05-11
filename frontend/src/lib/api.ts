@@ -1,7 +1,15 @@
 // Typed API client. All calls include credentials (cookies) so JWT auth flows naturally.
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+/** Same-origin `/api/v1` keeps cookies/CORS correct whether users hit LAN IP or the real hostname (docker-compose.prod.yml passes this default). */
+function normalizeApiBase(raw: string | undefined): string {
+  const fallback = "http://localhost:8000/api/v1";
+  if (raw === undefined || raw === "") return fallback;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("/")) return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+  return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+}
+
+export const API_BASE = normalizeApiBase(process.env.NEXT_PUBLIC_API_BASE_URL);
 
 export class ApiError extends Error {
   status: number;
@@ -88,4 +96,6 @@ export const api = {
   },
 };
 
-export const API_PUBLIC_BASE = API_BASE.replace(/\/api\/v1$/, "");
+export const API_PUBLIC_BASE = API_BASE.startsWith("http")
+  ? API_BASE.replace(/\/api\/v1\/?$/, "")
+  : "";

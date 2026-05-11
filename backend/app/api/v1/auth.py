@@ -1,8 +1,8 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.deps import CurrentUser, DbDep
 from app.core.security import (
     create_access_token,
@@ -29,15 +29,33 @@ from app.services.email import get_email_sender
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _set_auth_cookies(response: Response, user_id: int) -> None:
+def _cookie_secure(request: Request, settings: Settings) -> bool:
+    """Honor COOKIE_SECURE only when the browser connection is actually HTTPS.
+
+    With COOKIE_SECURE=true, plain HTTP (e.g. opening the site by LAN IP on :80)
+    must not emit Secure cookies — browsers ignore them, so login looks broken.
+    Behind Caddy, use X-Forwarded-Proto from the reverse proxy.
+    """
+    if not settings.cookie_secure:
+        return False
+    forwarded = request.headers.get("x-forwarded-proto", "").partition(",")[0].strip().lower()
+    if forwarded == "https":
+        return True
+    if forwarded == "http":
+        return False
+    return request.url.scheme == "https"
+
+
+def _set_auth_cookies(response: Response, request: Request, user_id: int) -> None:
     settings = get_settings()
     access = create_access_token(user_id)
     refresh = create_refresh_token(user_id)
+    secure = _cookie_secure(request, settings)
     response.set_cookie(
         "access_token",
         access,
         httponly=True,
-        secure=settings.cookie_secure,
+        secure=secure,
         samesite=settings.cookie_samesite,  # type: ignore[arg-type]
         max_age=settings.access_token_ttl_minutes * 60,
         path="/",
@@ -46,20 +64,34 @@ def _set_auth_cookies(response: Response, user_id: int) -> None:
         "refresh_token",
         refresh,
         httponly=True,
-        secure=settings.cookie_secure,
+        secure=secure,
         samesite=settings.cookie_samesite,  # type: ignore[arg-type]
         max_age=settings.refresh_token_ttl_minutes * 60,
         path="/api/v1/auth",
     )
 
 
-def _clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/api/v1/auth")
+def _clear_auth_cookies(response: Response, request: Request) -> None:
+    settings = get_settings()
+    secure = _cookie_secure(request, settings)
+    response.delete_cookie(
+        "access_token",
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+    )
+    response.delete_cookie(
+        "refresh_token",
+        path="/api/v1/auth",
+        secure=secure,
+        httponly=True,
+        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, response: Response, db: DbDep) -> LoginResponse:
+def login(payload: LoginRequest, response: Response, request: Request, db: DbDep) -> LoginResponse:
     user = db.query(User).filter(User.email == payload.email.lower()).one_or_none()
     if user is None or not user.password_hash or not verify_password(
         payload.password, user.password_hash
@@ -67,13 +99,13 @@ def login(payload: LoginRequest, response: Response, db: DbDep) -> LoginResponse
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Forkert email eller adgangskode")
     user.last_login_at = now_utc()
     db.commit()
-    _set_auth_cookies(response, user.id)
+    _set_auth_cookies(response, request, user.id)
     return LoginResponse(user=UserOut.model_validate(user))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response) -> Response:
-    _clear_auth_cookies(response)
+def logout(response: Response, request: Request) -> Response:
+    _clear_auth_cookies(response, request)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
@@ -84,7 +116,7 @@ def me(user: CurrentUser) -> UserOut:
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: DbDep) -> UserOut:
+def register(payload: RegisterRequest, response: Response, request: Request, db: DbDep) -> UserOut:
     invite = db.query(InviteToken).filter(InviteToken.token == payload.token).one_or_none()
     if invite is None:
         raise HTTPException(status_code=400, detail="Ugyldigt invitationstoken")
@@ -109,7 +141,7 @@ def register(payload: RegisterRequest, response: Response, db: DbDep) -> UserOut
     db.commit()
     db.refresh(user)
 
-    _set_auth_cookies(response, user.id)
+    _set_auth_cookies(response, request, user.id)
     return UserOut.model_validate(user)
 
 
