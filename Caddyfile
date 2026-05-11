@@ -1,6 +1,8 @@
-# Reverse proxy for prod. Replace karkov.example.com with your domain — Caddy will
-# automatically provision Let's Encrypt certificates.
-karkov.example.com {
+# Reverse proxy for prod. Caddy provisions Let's Encrypt certs for the hostname below.
+# Requirements: DNS A record → this server's public IP; router forwards WAN TCP 80 and 443
+# to this host (same ports). Both are needed for HTTPS issuance and for serving the site.
+
+(karkov_proxy) {
     encode gzip zstd
 
     # API + uploads -> backend
@@ -15,4 +17,16 @@ karkov.example.com {
     handle {
         reverse_proxy frontend:3000
     }
+}
+
+# Real domain: HTTPS + HTTP→HTTPS redirect for the hostname below.
+karkovweekend.dk {
+    import karkov_proxy
+}
+
+# Visiting http://<LAN-IP> or http://<public-IP> sends Host: <that IP>, which does not
+# match karkovweekend.dk — without this block you get an empty / wrong response.
+# Plain HTTP only (no TLS for bare IPs from Let's Encrypt).
+http:// {
+    import karkov_proxy
 }

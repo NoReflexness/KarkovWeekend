@@ -144,10 +144,18 @@ Everything is configured through environment variables. `.env.example` shows the
 
 ```bash
 cp .env.example .env
-$EDITOR .env                  # real domain names, secrets, admin password, SMTP
-$EDITOR Caddyfile             # change karkov.example.com to your domain
+$EDITOR .env                  # set PUBLIC_BASE_URL=https://your-domain, secrets, admin password, SMTP, VAPID
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+The shipped `Caddyfile` is wired for `karkovweekend.dk` plus a catch-all `http://` block for bare LAN/public IP access. Edit the hostname to match your domain.
+
+Router (e.g. UniFi): forward **WAN TCP 80 → host:80** and **WAN TCP 443 → host:443** to the host running Docker (Caddy listens on 80/443). Both ports are required — 80 for Let's Encrypt and for HTTP redirects, 443 for HTTPS.
+
+**Troubleshooting.** Can't reach the site from other LAN devices or the internet, even though `docker compose` is running?
+
+1. Host firewall (e.g. UFW): allow `80/tcp` and `443/tcp` inbound.
+2. `docker ps` doesn't show `0.0.0.0:80->80/tcp` on `caddy`: nothing else may bind 80/443 — recreate with `docker compose -f docker-compose.prod.yml down && docker compose -f docker-compose.prod.yml up -d` to re-establish the port mapping.
 
 ## Not in this release (deferred)
 

@@ -48,6 +48,9 @@ services:
     depends_on:
       - backend
       - frontend
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     ports:
       - "80:80"
       - "443:443"

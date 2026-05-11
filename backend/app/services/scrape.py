@@ -13,7 +13,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 DEFAULT_TIMEOUT_SECONDS = 8.0
-USER_AGENT = "KarkovWeekend/1.0 (+https://karkov.example.com)"
+USER_AGENT = "KarkovWeekend/1.0 (+https://karkovweekend.dk)"
 
 
 @dataclass

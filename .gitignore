@@ -1,6 +1,9 @@
 .env
 .env.local
 
+# Web Push VAPID key material (generate locally; never commit)
+vapid.pem
+
 # Python
 __pycache__/
 *.pyc
