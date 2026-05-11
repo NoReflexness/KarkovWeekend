@@ -167,6 +167,8 @@ export const da = {
     sentToast: (n: number) =>
       n === 0 ? "Ingen nye invitationer at sende" : `${n} invitation${n === 1 ? "" : "er"} sendt`,
     cancelInvite: "Annullér",
+    resendInvite: "Send invitationen igen",
+    resentToast: "Invitation sendt igen",
     notifiedAt: (s: string) => `Sendt ${new Date(s).toLocaleDateString("da-DK")}`,
     notNotified: "Ikke sendt endnu",
     inviteAddedToast: "Forælder forberedt — brug 'Send alle' når du er klar",
@@ -357,6 +359,8 @@ export const da = {
       "Aktivér push, så denne enhed vibrerer/giver lyd ved nye arrangementer, tilmeldinger og chat-systembeskeder.",
     pushUnsupported:
       "Denne browser understøtter ikke push-notifikationer. Prøv at åbne siden i en moderne browser eller installer den som app.",
+    pushInsecure:
+      "Push kræver en sikker forbindelse (HTTPS). Åbn siden via dit domæne (fx https://karkovweekend.dk) — ikke via lokal IP eller plain HTTP.",
     pushDenied:
       "Notifikationer er afvist i browseren. Tillad dem under sidens indstillinger og prøv igen.",
     pushEnable: "Slå push til",

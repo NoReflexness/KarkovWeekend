@@ -171,6 +171,69 @@ def test_invite_with_notify_true_sends_email(client):
     assert inv.json()["notified_at"] is not None
 
 
+def test_resend_invite_works_even_after_notified(client):
+    """Bulk send-pending marked the invite as notified, but SMTP silently
+    failed (pre-fix). The per-invite resend endpoint must still deliver."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid = client.post("/api/v1/families", json={"name": "Resend"}).json()["id"]
+    inv = client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "a@example.com"}
+    ).json()
+    assert inv["notified_at"] is None
+
+    # Pretend a bulk send happened (marks notified_at).
+    client.post(f"/api/v1/families/{fid}/invites/send-pending")
+    after_bulk = client.get(f"/api/v1/families/{fid}/invites").json()
+    assert after_bulk[0]["notified_at"] is not None
+    first_notified = after_bulk[0]["notified_at"]
+
+    # Single resend still works and bumps notified_at.
+    r = client.post(
+        f"/api/v1/families/{fid}/invites/{inv['id']}/resend"
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["notified_at"] is not None
+    assert r.json()["notified_at"] >= first_notified
+
+
+def test_resend_invite_rejects_used_invite(client):
+    """Used tokens are burned — resending would be a no-op confusing UX."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid = client.post("/api/v1/families", json={"name": "Used"}).json()["id"]
+    inv = client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "used@example.com"}
+    ).json()
+    client.post("/api/v1/auth/logout")
+    client.post(
+        "/api/v1/auth/register",
+        json={"token": inv["token"], "name": "U", "password": "password123"},
+    )
+    client.post("/api/v1/auth/logout")
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    r = client.post(f"/api/v1/families/{fid}/invites/{inv['id']}/resend")
+    assert r.status_code == 400
+
+
+def test_resend_invite_requires_admin(client):
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid = client.post("/api/v1/families", json={"name": "Auth"}).json()["id"]
+    invite_token = client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "x@example.com"}
+    ).json()["token"]
+    parent_invite_token = client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "y@example.com"}
+    ).json()
+    client.post("/api/v1/auth/logout")
+    client.post(
+        "/api/v1/auth/register",
+        json={"token": invite_token, "name": "P", "password": "password123"},
+    )
+    r = client.post(
+        f"/api/v1/families/{fid}/invites/{parent_invite_token['id']}/resend"
+    )
+    assert r.status_code == 403
+
+
 def test_admin_can_promote_and_demote_user(client):
     # bootstrap a parent
     _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)

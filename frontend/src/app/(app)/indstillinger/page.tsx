@@ -19,6 +19,7 @@ import {
   Upload,
   Link2,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -349,6 +350,16 @@ function FamilyAdminCard({
     onError: (e) => e instanceof ApiError && toast.error(e.message),
   });
 
+  const resendInvite = useMutation({
+    mutationFn: (id: number) =>
+      api.post<Invite>(`/families/${family.id}/invites/${id}/resend`, {}),
+    onSuccess: () => {
+      toast.success(da.family.resentToast);
+      invalidateAll();
+    },
+    onError: (e) => e instanceof ApiError && toast.error(e.message),
+  });
+
   const setRole = useMutation({
     mutationFn: ({ id, role }: { id: number; role: "admin" | "parent" }) =>
       api.patch<User>(`/users/${id}/role`, { role }),
@@ -666,6 +677,15 @@ function FamilyAdminCard({
                         : da.family.notNotified}
                     </p>
                   </div>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    title={da.family.resendInvite}
+                    onClick={() => resendInvite.mutate(inv.id)}
+                    disabled={resendInvite.isPending}
+                  >
+                    <RefreshCw className="size-4" />
+                  </Button>
                   <Button
                     size="icon-sm"
                     variant="ghost"

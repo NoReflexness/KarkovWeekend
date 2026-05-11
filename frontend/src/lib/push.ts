@@ -11,10 +11,15 @@ import { api } from "@/lib/api";
 
 const SERVICE_WORKER_PATH = "/service-worker.js";
 
-export type PushAvailability = "available" | "unsupported";
+export type PushAvailability = "available" | "insecure-context" | "unsupported";
 
 export function pushAvailability(): PushAvailability {
   if (typeof window === "undefined") return "unsupported";
+  // Browsers hide the entire Push/Service-Worker/Notification API surface on
+  // insecure origins. Distinguish that from real lack of support so we can
+  // tell the user to switch to https:// instead of vaguely blaming the
+  // browser.
+  if (window.isSecureContext === false) return "insecure-context";
   if (!("serviceWorker" in navigator)) return "unsupported";
   if (!("PushManager" in window)) return "unsupported";
   if (!("Notification" in window)) return "unsupported";

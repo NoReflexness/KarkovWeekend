@@ -14,7 +14,7 @@ import {
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
-type State = "loading" | "unsupported" | "denied" | "off" | "on";
+type State = "loading" | "insecure" | "unsupported" | "denied" | "off" | "on";
 
 export function PushToggle() {
   const [state, setState] = useState<State>("loading");
@@ -24,6 +24,10 @@ export function PushToggle() {
     let cancelled = false;
     (async () => {
       const availability = pushAvailability();
+      if (availability === "insecure-context") {
+        if (!cancelled) setState("insecure");
+        return;
+      }
       if (availability !== "available") {
         if (!cancelled) setState("unsupported");
         return;
@@ -88,6 +92,9 @@ export function PushToggle() {
         {da.profile.pushTitle}
       </div>
       <p className="text-muted-foreground text-xs">{da.profile.pushHint}</p>
+      {state === "insecure" && (
+        <p className="text-muted-foreground text-xs">{da.profile.pushInsecure}</p>
+      )}
       {state === "unsupported" && (
         <p className="text-muted-foreground text-xs">{da.profile.pushUnsupported}</p>
       )}

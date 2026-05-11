@@ -204,6 +204,38 @@ def send_pending_invites(family_id: int, db: DbDep) -> InviteSendResult:
     return InviteSendResult(sent=len(sent_now), invites=[_invite_to_out(i) for i in sent_now])
 
 
+@router.post(
+    "/{family_id}/invites/{invite_id}/resend",
+    response_model=InviteOut,
+    dependencies=[Depends(require_admin)],
+)
+def resend_invite(family_id: int, invite_id: int, db: DbDep) -> InviteOut:
+    """Re-send an existing invite email regardless of prior `notified_at`.
+
+    Useful when the first delivery failed silently (SMTP not yet configured,
+    transient one.com refusal, etc). Refuses used invites since the token is
+    burned anyway. Updates `notified_at` to the current time on success.
+    """
+    fam = db.get(Family, family_id)
+    if fam is None:
+        raise HTTPException(status_code=404, detail="Familie findes ikke")
+    invite = db.get(InviteToken, invite_id)
+    if invite is None or invite.family_id != family_id:
+        raise HTTPException(status_code=404, detail="Invitation findes ikke")
+    if invite.used_at is not None:
+        raise HTTPException(status_code=400, detail="Invitation er allerede brugt")
+    get_email_sender().send(
+        db,
+        to=invite.email,
+        subject=f"Invitation til {fam.name}",
+        body=_invite_email_body(fam, invite),
+    )
+    invite.notified_at = now_utc()
+    db.commit()
+    db.refresh(invite)
+    return _invite_to_out(invite)
+
+
 @router.delete(
     "/{family_id}",
     status_code=status.HTTP_204_NO_CONTENT,
