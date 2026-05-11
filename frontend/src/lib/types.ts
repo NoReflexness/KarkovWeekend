@@ -87,6 +87,34 @@ export interface KarkovEvent {
   days: EventDay[];
   bed_demand: BedDemand;
   attendees: AttendeeSummary[];
+  group_photo_url: string | null;
+  photo_count: number;
+}
+
+export interface EventPhoto {
+  id: number;
+  event_id: number;
+  uploader_user_id: number | null;
+  url: string;
+  caption: string | null;
+  is_group_photo: boolean;
+  taken_at: string | null;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+}
+
+export interface GalleryPhoto {
+  id: number;
+  event_id: number;
+  event_name: string;
+  event_start_date: string;
+  url: string;
+  caption: string | null;
+  is_group_photo: boolean;
+  taken_at: string | null;
+  width: number | null;
+  height: number | null;
 }
 
 export interface ExpenseCategory {

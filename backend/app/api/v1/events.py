@@ -1,11 +1,13 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from sqlalchemy import func as sa_func
 
 from app.core.deps import CurrentUser, DbDep, require_not_child
 from app.models.attendance import Attendance
 from app.models.chor import Chor
 from app.models.event import Event, EventDay, EventStatus
+from app.models.event_photo import EventPhoto
 from app.models.pricing_rules import PricingRules
 from app.models.user import User, UserRole
 from app.schemas.attendance import AttendanceToggle, BulkAttendance
@@ -17,7 +19,10 @@ from app.schemas.event import (
     EventCreate,
     EventDayOut,
     EventOut,
+    EventPhotoOut,
+    EventPhotoUpdate,
     EventUpdate,
+    GalleryPhotoOut,
 )
 from app.models.family import Family
 from app.core.security import now_utc
@@ -32,6 +37,7 @@ from app.services.notifications import (
 )
 from app.services.pricing import AgeBracket, classify
 from app.services.scrape import fetch_summerhouse
+from app.services.uploads import save_event_photo
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -134,6 +140,24 @@ def _to_out(db, event: Event) -> EventOut:
         )
     )
 
+    # Photo summary: count + designated group photo URL (if any). Cheap single
+    # query so list views can render hero/badge without per-event lookups.
+    photo_count = (
+        db.query(sa_func.count(EventPhoto.id))
+        .filter(EventPhoto.event_id == event.id)
+        .scalar()
+        or 0
+    )
+    group_photo = (
+        db.query(EventPhoto.url)
+        .filter(
+            EventPhoto.event_id == event.id,
+            EventPhoto.is_group_photo.is_(True),
+        )
+        .order_by(EventPhoto.id.desc())
+        .first()
+    )
+
     return EventOut(
         id=event.id,
         name=event.name,
@@ -156,6 +180,8 @@ def _to_out(db, event: Event) -> EventOut:
             bed_count=event.bed_count, peak=peak, peak_date=peak_date
         ),
         attendees=attendees_out,
+        group_photo_url=group_photo[0] if group_photo else None,
+        photo_count=int(photo_count),
     )
 
 
@@ -561,3 +587,205 @@ def finalize_event(event_id: int, db: DbDep, user: CurrentUser) -> EventOut:
     db.commit()
     db.refresh(event)
     return _to_out(db, event)
+
+
+# ---- Cross-event gallery ---------------------------------------------------
+#
+# Declared BEFORE the `/{event_id}/photos/...` routes so the literal
+# `/photos/gallery` segment isn't mis-matched as `event_id=photos`.
+
+
+@router.get("/photos/gallery", response_model=list[GalleryPhotoOut])
+def gallery(
+    db: DbDep,
+    _: CurrentUser,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[GalleryPhotoOut]:
+    """Cross-event photo feed for the history gallery / dias mode.
+
+    Newest events first, then chronologically by `taken_at` within each event.
+    Paginated to keep the initial payload sane on a large archive.
+    """
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    rows = (
+        db.query(EventPhoto, Event.name, Event.start_date)
+        .join(Event, EventPhoto.event_id == Event.id)
+        .order_by(
+            Event.start_date.desc(),
+            EventPhoto.taken_at.asc().nullslast(),
+            EventPhoto.id.asc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [
+        GalleryPhotoOut(
+            id=p.id,
+            event_id=p.event_id,
+            event_name=ename,
+            event_start_date=edate,
+            url=p.url,
+            caption=p.caption,
+            is_group_photo=p.is_group_photo,
+            taken_at=p.taken_at,
+            width=p.width,
+            height=p.height,
+        )
+        for (p, ename, edate) in rows
+    ]
+
+
+# ---- Per-event photos ------------------------------------------------------
+#
+# Authorization model:
+# - Any authenticated user can list & upload photos to any event. We deliberately
+#   don't gate on attendance — partners want to share the album with extended
+#   family who didn't make it that year.
+# - Edit/delete is restricted to (a) the photo's uploader, (b) the event host,
+#   (c) any admin. Group-photo flag follows the same rule.
+
+
+def _can_edit_photo(*, user: User, event: Event, photo: EventPhoto) -> bool:
+    if user.role == UserRole.ADMIN:
+        return True
+    if event.host_user_id and event.host_user_id == user.id:
+        return True
+    if photo.uploader_user_id and photo.uploader_user_id == user.id:
+        return True
+    return False
+
+
+@router.get("/{event_id}/photos", response_model=list[EventPhotoOut])
+def list_event_photos(
+    event_id: int, db: DbDep, _: CurrentUser
+) -> list[EventPhotoOut]:
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Arrangement findes ikke")
+    rows = (
+        db.query(EventPhoto)
+        .filter(EventPhoto.event_id == event_id)
+        .order_by(
+            # Group photo first, then chronologically by taken_at (falling back
+            # to upload order when EXIF is missing).
+            EventPhoto.is_group_photo.desc(),
+            EventPhoto.taken_at.asc().nullslast(),
+            EventPhoto.id.asc(),
+        )
+        .all()
+    )
+    return [EventPhotoOut.model_validate(p) for p in rows]
+
+
+@router.post(
+    "/{event_id}/photos",
+    response_model=list[EventPhotoOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_event_photos(
+    event_id: int,
+    files: list[UploadFile],
+    db: DbDep,
+    user: CurrentUser,
+) -> list[EventPhotoOut]:
+    """Upload one or more photos to an event.
+
+    Accepts multipart `files` (repeatable form field) so the frontend can
+    drop a whole batch in one request. Each file is independently validated
+    and saved; partial failures abort the whole request.
+    """
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Arrangement findes ikke")
+    if not files:
+        raise HTTPException(status_code=400, detail="Ingen filer")
+
+    created: list[EventPhoto] = []
+    for f in files:
+        saved = save_event_photo(f, event_id=event_id)
+        photo = EventPhoto(
+            event_id=event_id,
+            uploader_user_id=user.id,
+            url=saved.url,
+            taken_at=saved.taken_at,
+            width=saved.width,
+            height=saved.height,
+        )
+        db.add(photo)
+        created.append(photo)
+    db.commit()
+    for p in created:
+        db.refresh(p)
+    return [EventPhotoOut.model_validate(p) for p in created]
+
+
+@router.patch(
+    "/{event_id}/photos/{photo_id}", response_model=EventPhotoOut
+)
+def update_event_photo(
+    event_id: int,
+    photo_id: int,
+    payload: EventPhotoUpdate,
+    db: DbDep,
+    user: CurrentUser,
+) -> EventPhotoOut:
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Arrangement findes ikke")
+    photo = db.get(EventPhoto, photo_id)
+    if photo is None or photo.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Foto findes ikke")
+    if not _can_edit_photo(user=user, event=event, photo=photo):
+        raise HTTPException(status_code=403, detail="Adgang nægtet")
+
+    if "caption" in payload.model_fields_set:
+        photo.caption = (payload.caption or "").strip() or None
+    if payload.is_group_photo is True and not photo.is_group_photo:
+        # Enforce "exactly one group photo per event" by clearing any siblings.
+        (
+            db.query(EventPhoto)
+            .filter(
+                EventPhoto.event_id == event_id,
+                EventPhoto.id != photo.id,
+                EventPhoto.is_group_photo.is_(True),
+            )
+            .update({EventPhoto.is_group_photo: False})
+        )
+        photo.is_group_photo = True
+    elif payload.is_group_photo is False:
+        photo.is_group_photo = False
+    db.commit()
+    db.refresh(photo)
+    return EventPhotoOut.model_validate(photo)
+
+
+@router.delete(
+    "/{event_id}/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_event_photo(
+    event_id: int, photo_id: int, db: DbDep, user: CurrentUser
+) -> None:
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Arrangement findes ikke")
+    photo = db.get(EventPhoto, photo_id)
+    if photo is None or photo.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Foto findes ikke")
+    if not _can_edit_photo(user=user, event=event, photo=photo):
+        raise HTTPException(status_code=403, detail="Adgang nægtet")
+    # Best-effort delete the file on disk.
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    if photo.url.startswith("/uploads/"):
+        rel = photo.url[len("/uploads/"):]
+        candidate = settings.uploads_dir / rel
+        try:
+            candidate.unlink(missing_ok=True)
+        except OSError:
+            pass
+    db.delete(photo)
+    db.commit()

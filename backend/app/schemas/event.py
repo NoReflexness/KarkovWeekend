@@ -96,3 +96,47 @@ class EventOut(BaseModel):
     days: list[EventDayOut] = []
     bed_demand: BedDemand
     attendees: list[AttendeeSummary] = []
+    # Photo summary surfaced on every EventOut so list views can render the
+    # group photo as the card hero (or a count badge) without an extra
+    # roundtrip per event. Full photo list lives at GET /events/{id}/photos.
+    group_photo_url: str | None = None
+    photo_count: int = 0
+
+
+class EventPhotoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    event_id: int
+    uploader_user_id: int | None
+    url: str
+    caption: str | None
+    is_group_photo: bool
+    taken_at: datetime | None
+    width: int | None
+    height: int | None
+    created_at: datetime
+
+
+class EventPhotoUpdate(BaseModel):
+    caption: str | None = None
+    is_group_photo: bool | None = None
+
+
+class GalleryPhotoOut(BaseModel):
+    """Per-photo entry in the cross-event history gallery.
+
+    Includes the parent event's name + start_date so the frontend can render
+    section headers and the "dias" carousel caption without follow-up
+    lookups per event.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    event_id: int
+    event_name: str
+    event_start_date: date
+    url: str
+    caption: str | None
+    is_group_photo: bool
+    taken_at: datetime | None
+    width: int | None
+    height: int | None

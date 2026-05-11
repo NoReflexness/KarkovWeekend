@@ -6,6 +6,7 @@ import { useEffect, useMemo } from "react";
 import {
   Calendar,
   Home,
+  Image as ImageIcon,
   LogOut,
   MessageCircle,
   Settings,
@@ -34,6 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const BASE_NAV = [
   { href: "/", label: da.nav.home, icon: Home },
   { href: "/arrangementer", label: da.nav.events, icon: Calendar },
+  { href: "/galleri", label: da.nav.gallery, icon: ImageIcon },
   { href: "/chat", label: da.nav.chat, icon: MessageCircle },
   { href: "/familie", label: da.nav.family, icon: Users },
   { href: "/profil", label: da.nav.profile, icon: UserIcon },

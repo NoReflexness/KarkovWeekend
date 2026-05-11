@@ -74,27 +74,41 @@ export const api = {
   upload: async <T>(path: string, file: File): Promise<T> => {
     const fd = new FormData();
     fd.append("file", file);
-    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
-    const res = await fetch(url, {
-      method: "POST",
-      credentials: "include",
-      body: fd,
-    });
-    const text = await res.text();
-    let payload: unknown = null;
-    if (text) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = text;
-      }
-    }
-    if (!res.ok) {
-      throw new ApiError(res.status, String((payload as { detail?: string })?.detail ?? res.statusText), payload);
-    }
-    return payload as T;
+    return uploadFormData<T>(path, fd);
+  },
+  /** Upload N files to an endpoint expecting a repeatable `files` field. */
+  uploadMany: async <T>(path: string, files: File[]): Promise<T> => {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return uploadFormData<T>(path, fd);
   },
 };
+
+async function uploadFormData<T>(path: string, fd: FormData): Promise<T> {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  const text = await res.text();
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      String((payload as { detail?: string })?.detail ?? res.statusText),
+      payload,
+    );
+  }
+  return payload as T;
+}
 
 export const API_PUBLIC_BASE = API_BASE.startsWith("http")
   ? API_BASE.replace(/\/api\/v1\/?$/, "")

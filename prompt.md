@@ -275,8 +275,12 @@ tool.
 - `/glemt-adgangskode` — forgot-password landing.
 - `/nulstil-adgangskode?token=…` — set-new-password landing.
 - `/` — home with next-event hero and quick-action.
-- `/arrangementer` — list of all events.
-- `/arrangementer/[id]` — event detail (header + tabs).
+- `/arrangementer` — list of all events (each card uses the event's group
+  photo as a hero when set).
+- `/arrangementer/[id]` — event detail (header + tabs: Dage, Opgaver,
+  Aktiviteter, Billeder, Budget).
+- `/galleri` — cross-event photo history with sections per event and a
+  full-screen "Dias-visning" autoplay carousel.
 - `/familie` — your family unit (with age-category badges on children).
 - `/chat` — global chat room.
 - `/profil` — your profile, password change, notification preference.
@@ -294,11 +298,9 @@ tool.
 
 ## 12. Future / nice-to-have
 
-- Event photo upload UI.
-- Event photo gallery.
-- Event group photo.
-- Events history gallery with "dias" mode (image carousel).
-- Bulk import of past events / photos.
+- Bulk import of past events / photos (drop a folder of photos into an
+  event, parse EXIF for date placement, optional manifest YAML for captions
+  and group-photo selection).
 - Backup / restore of the database.
 - Group photo event automatically created on the date most users are
   attending.
@@ -309,6 +311,27 @@ tool.
 
 ### Recently shipped (was on this list)
 
+- Event photo upload UI — drop a batch of photos into the "Billeder" tab on
+  any event. Pillow validates the bytes, normalizes EXIF orientation,
+  downsizes anything above 2560px on the long edge to keep transfers sane,
+  and extracts `DateTimeOriginal` for chronological gallery sort.
+- Per-event photo gallery with lightbox + keyboard nav (←/→/Esc) under the
+  "Billeder" tab. Uploader / host / admin can edit captions, mark the group
+  photo, and delete.
+- Group photo: one photo per event can be flagged via the edit dialog.
+  Surfaced as the hero on event cards (`/arrangementer`) and the
+  `group_photo_url` field on `EventOut`. Flipping the flag automatically
+  unsets the previous group photo for that event.
+- History gallery at `/galleri` with chronological sections per event and a
+  full-screen "Dias-visning" carousel that auto-advances every 4s
+  (Space toggles play/pause; ←/→/Esc work as expected).
+- Per-family "Send opsætningslinks" button — issues a fresh 24h
+  password-reset token for every parent in the family who hasn't activated
+  yet (covers YAML-imported families that never had invite tokens). Pending
+  invite tokens are resent in the same call.
+- Admin can edit any user's name/email/birthdate/password via the pencil
+  icon on each parent row, and send an individual password-reset link via
+  the key icon.
 - Real password-reset emails — fully wired end-to-end. Set `SMTP_HOST` and
   friends in `.env` to deliver real mail; otherwise the dev outbox writes
   rows to `email_outbox` so you can copy the link out manually.

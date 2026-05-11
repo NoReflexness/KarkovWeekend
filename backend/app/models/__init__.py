@@ -6,6 +6,7 @@ from app.models.chat_message import ChatMessage, ChatMessageKind
 from app.models.chor import Chor, ChorAction, ChorMeal
 from app.models.email_outbox import EmailOutbox
 from app.models.event import Event, EventDay, EventStatus
+from app.models.event_photo import EventPhoto
 from app.models.expense import Expense
 from app.models.expense_category import ExpenseCategory
 from app.models.family import Family
@@ -28,6 +29,7 @@ __all__ = [
     "EmailOutbox",
     "Event",
     "EventDay",
+    "EventPhoto",
     "EventStatus",
     "Expense",
     "ExpenseCategory",

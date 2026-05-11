@@ -24,6 +24,7 @@ import { ChorsTab } from "./chors-tab";
 import { DaysTab } from "./days-tab";
 import { EditEventDialog } from "./edit-event-dialog";
 import { EventActions } from "./event-actions";
+import { PhotosTab } from "./photos-tab";
 import { PlanNextYearButton } from "./plan-next-year";
 import { SummerhouseHero } from "./summerhouse-hero";
 
@@ -186,6 +187,14 @@ function EventDetailBody({
           <TabsTrigger value="days">{da.events.days}</TabsTrigger>
           <TabsTrigger value="chors">{da.events.chors}</TabsTrigger>
           <TabsTrigger value="activities">{da.events.activities}</TabsTrigger>
+          <TabsTrigger value="photos">
+            {da.events.photos}
+            {event.photo_count > 0 && (
+              <span className="text-muted-foreground ml-1.5 text-xs">
+                {event.photo_count}
+              </span>
+            )}
+          </TabsTrigger>
           {!isChild && <TabsTrigger value="budget">{da.events.budget}</TabsTrigger>}
         </TabsList>
         <TabsContent value="days">
@@ -196,6 +205,9 @@ function EventDetailBody({
         </TabsContent>
         <TabsContent value="activities">
           <ActivitiesTab event={event} />
+        </TabsContent>
+        <TabsContent value="photos">
+          <PhotosTab event={event} />
         </TabsContent>
         {!isChild && (
           <TabsContent value="budget">

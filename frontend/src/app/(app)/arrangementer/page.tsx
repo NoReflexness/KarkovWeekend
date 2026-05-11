@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { da } from "@/i18n/da";
-import { formatDateRange } from "@/lib/format";
+import { formatDateRange, publicUrl } from "@/lib/format";
 import type { KarkovEvent, User } from "@/lib/types";
 
 import { Badge } from "@/components/ui/badge";
@@ -207,7 +207,16 @@ export default function EventsListPage() {
           {data?.map((e) => (
             <li key={e.id}>
               <Link href={`/arrangementer/${e.id}`}>
-                <Card className="hover:bg-accent/40 transition-colors">
+                <Card className="hover:bg-accent/40 overflow-hidden transition-colors">
+                  {e.group_photo_url && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={publicUrl(e.group_photo_url) ?? e.group_photo_url}
+                      alt=""
+                      loading="lazy"
+                      className="h-40 w-full object-cover"
+                    />
+                  )}
                   <CardHeader className="flex flex-row items-start justify-between gap-3">
                     <div>
                       <CardTitle className="text-lg">{e.name}</CardTitle>
@@ -223,6 +232,7 @@ export default function EventsListPage() {
                   <CardContent className="text-muted-foreground text-sm">
                     {da.events.daysCount(e.days.length)}
                     {e.bed_count && ` · ${da.events.bedCountLabel(e.bed_count)}`}
+                    {e.photo_count > 0 && ` · ${da.photos.count(e.photo_count)}`}
                   </CardContent>
                 </Card>
               </Link>

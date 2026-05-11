@@ -7,6 +7,7 @@ export const da = {
   nav: {
     home: "Forside",
     events: "Arrangementer",
+    gallery: "Galleri",
     chat: "Chat",
     family: "Familie",
     profile: "Profil",
@@ -55,6 +56,7 @@ export const da = {
     days: "Dage",
     chors: "Opgaver",
     activities: "Aktiviteter",
+    photos: "Billeder",
     budget: "Budget",
     open: "Åbn for tilmelding",
     lockAttendance: "Lås tilmelding",
@@ -297,6 +299,41 @@ export const da = {
     optOut: "Nej, kun i appen",
     later: "Spørg mig senere",
     savedToast: "Notifikationsindstilling gemt",
+  },
+  photos: {
+    upload: "Upload billeder",
+    uploading: "Uploader…",
+    uploadedToast: (n: number) =>
+      n === 1 ? "1 billede uploadet" : `${n} billeder uploadet`,
+    empty: "Ingen billeder endnu",
+    count: (n: number) => (n === 1 ? "1 billede" : `${n} billeder`),
+    emptyCta:
+      "Klik på 'Upload billeder' for at dele øjeblikke fra arrangementet — alle i appen kan bidrage.",
+    open: "Åbn billede",
+    close: "Luk",
+    prev: "Forrige",
+    next: "Næste",
+    edit: "Rediger",
+    editTitle: "Rediger billede",
+    captionLabel: "Billedtekst",
+    captionPlaceholder: "Hvad skete der her?",
+    markGroupLabel:
+      "Marker som gruppebillede (vises på arrangementets kort).",
+    groupBadge: "Gruppebillede",
+    savedToast: "Gemt",
+    deletedToast: "Billede slettet",
+    deleteConfirmTitle: "Slet billede?",
+    deleteConfirmBody:
+      "Billedet fjernes permanent. Andre kan ikke længere se det.",
+  },
+  gallery: {
+    pageTitle: "Galleri",
+    pageSubtitle: "Alle billeder fra vores arrangementer — fra nyeste til ældste.",
+    empty: "Ingen billeder uploadet endnu.",
+    diasMode: "Dias-visning",
+    diasModeStop: "Stop dias",
+    eventLink: "Se arrangement",
+    loadMore: "Vis flere",
   },
   budget: {
     total: "Total",
