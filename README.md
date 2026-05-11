@@ -1,100 +1,98 @@
 # Karkov Weekend
 
-> Familieweekendens samlingssted — en webapp der hjælper en lukket gruppe danske familier med at planlægge fælles weekendture i feriehus: tilmelding, opgaver, aktiviteter, budget, chat og notifikationer.
+> A closed-group family weekend planner — a web app that helps a small group of families plan shared summerhouse weekends together: sign-up, chores, activities, budget, chat and notifications.
 
-Den fulde produktbeskrivelse ligger i [`prompt.md`](./prompt.md).
+The full product spec lives in [`prompt.md`](./prompt.md). The UI itself is in Danish (all copy lives in `frontend/src/i18n/da.ts`); this README is English-only.
 
-[Read this in English ↓](#english)
+## Features
 
----
+### Families & users
 
-## Funktioner
+- **Email/password login** with invite-based registration and JWT in httpOnly cookies.
+- **Families & children**: every user belongs to exactly one family. Parents can create children (with or without their own login). Children may sign themselves in/out of events but never see the budget.
+- **Admin tools**: bootstrap a whole family at once (parents + kids), then fire all invites in one go. Cancel/resend pending invites. Promote a parent to admin (the last admin can't be demoted). Delete families/users/children with confirmations.
+- **Orphan-admin attach**: the bootstrap admin starts without a family. Either list them in the YAML import (they get attached automatically) or click the per-family "Tilknyt mig her" button on the admin settings page.
+- **Age brackets** (admin-tunable): babies (0–2) don't count, kids (3–13) pay half, teens and adults pay full. Surfaced as badges anywhere children appear.
 
-### Familier & brugere
+### Events
 
-- **Email/adgangskode-login** med invitationsbaseret registrering og JWT i httpOnly-cookies.
-- **Familier & børn**: hver bruger tilhører én familie. Forældre kan oprette børn (med eller uden egen login). Børn må logge ind og melde sig til/fra, men ikke se budget.
-- **Admin-værktøjer**: opret familier komplet (forældre + børn) først og send invitationerne i ét hug. Cancel/resend pending invites. Promovér forælder til admin (sidste admin kan ikke degraderes). Slet familier/brugere/børn med bekræftelse.
-- **Aldersbrackets** (admin-justerbare): baby (0–2) tæller ikke, barn (3–13) halv pris, teenager+voksen fuld pris. Vises som badges overalt hvor børn nævnes.
+- **Create events** with name, date range, address, Google Maps URL, summerhouse URL (optional — can be filled in later as a notification), bed count and host.
+- **Auto-generated days and six chores per day** (breakfast/lunch/dinner × prep/cleanup).
+- **Inline editing** of every event detail (host or admin).
+- **Plan next year** in one click (dates +1 year, same duration, host and links carried over).
+- **Header summary**: title, date, address, host, open chores (click-through to the Chores tab), a mini map that opens Google Maps, and a per-family attendee strip with "X/Y days" badges.
 
-### Arrangementer
+### Sign-up, chores, activities
 
-- **Opret event** med navn, dato, adresse, Google-Maps-URL, feriehus-URL (valgfri — kan tilføjes senere som notifikation), antal sengepladser, host.
-- **Auto-genererede dage og 6 gøremål per dag** (morgenmad/frokost/aftensmad × forberedelse/oprydning).
-- **Inline-redigering** af alle event-detaljer (host eller admin).
-- **Plan næste år** med ét klik (datoer +1 år, samme længde, host og links overført).
-- **Headeropsummering**: titel, dato, adresse, host, ledige gøremål (klikbar genvej til Chors-tab), mini-kort der åbner i Google Maps, og en deltager-strip grupperet pr. familie med "X/Y dage" badges.
-
-### Tilmelding, gøremål, aktiviteter
-
-- **Tilmelding pr. dag** (eller alle på én gang); børn følger automatisk forælderen.
-- **Bed-demand widget** der viser top-belægning per dag mod sengetal med rød/gul/grøn-bar (babyer ekskluderet).
-- **Ledige gøremål** vises øverst og kan tages af alle. Forældre kan tage på vegne af deres børn. Host/admin kan omfordele.
-- **Aktiviteter** pr. dag — alle kan oprette, redigere og tilmelde sig (eller deres børn).
+- **Per-day sign-up** (or all days at once); kids follow their parent automatically.
+- **Bed-demand widget** showing peak occupancy per day against the bed count with red/amber/green bar (babies excluded).
+- **Open chores** float to the top and can be claimed by anyone. Parents can claim on behalf of their kids. Host/admin can reassign.
+- **Activities** per day — anyone can create, edit and sign up (themselves or their kids).
 
 ### Budget
 
-- **Live foreløbigt regnskab pr. familie** allerede inden eventet er afsluttet (betalt, andel, netto).
-- **Udgiftskategorier** med tre flag (per-person / per-nat / forbrug) — admin kan tilføje, omdøbe, slette og toggle fra `/indstillinger`. "Forbrug" er forhåndsmarkeret som utility.
-- **Udgifter** har beløb, kategori, beskrivelse, valgfri tilknytning til et gøremål og en betaler. Admin kan ændre betaleren bagefter.
-- **Forbrug-mangler**-banner og en bekræftelses-dialog når host/admin afslutter, så glemt forbrug ikke smutter med.
-- **Færrest mulige overførsler** mellem familier (greedy two-pointer) vises som "Familie A betaler X kr til Familie B" — fairness og gennemsigtighed first.
-- **Afslutning** låser udgifterne, beregner endeligt regnskab og emailer alle voksne deltagere med betalingsinstruktioner. Admin kan stadig korrigere efterfølgende som nødløsning.
+- **Live preliminary balance per family** even before the event closes (paid, share, net).
+- **Expense categories** with three flags (per-person / per-night / utility) — admin can add, rename, delete and toggle from `/indstillinger`. "Forbrug" is pre-flagged as a utility.
+- **Expenses** have amount, category, description, an optional chore link and a payer. Admin can reassign the payer afterwards.
+- **Utility-missing banner** plus a confirmation dialog when the host/admin closes the event, so forgotten utility receipts can't slip through.
+- **Minimum-transfer settlement** between families (greedy two-pointer) shown as "Family A pays X kr to Family B" — fairness and transparency first.
+- **Closing** locks the expenses, computes the final balance and emails every adult participant with payment instructions. Admin can still correct things afterwards as an escape hatch.
 
-### Chat & notifikationer
+### Chat & notifications
 
-- **Globalt chat-rum** med daglige date-separators og auto-scroll.
-- **Live opdateringer** via Server-Sent Events (`GET /api/v1/chat/stream`) — nye beskeder dukker op uden refresh. 30-sekunders sikkerhedspolling tager over hvis EventSource fejler.
-- **Notifikationerne**: oprettelse af event, tilføjelse af feriehus til et event uden, ændringer i tilmelding, oprettelse/tilmelding til aktivitet, valg af gøremål og afslutning af event ryger som system-besked i chatten med ikon og link til eventet — samt fan-out til opt-in voksne over **email** og **web push** (eksklusive aktøren).
-- **Email-notifikationer**: DB-outbox er altid på; SMTP fyrer hvis `SMTP_HOST` er sat. Password-reset-mails går igennem samme pipeline.
-- **Web-push**: opt-in pr. enhed på `/profil`. Service worker (`/service-worker.js`) viser notifikationen og dybde-linker til eventet. Backenden auto-genererer et VAPID-nøglepar i dev hvis `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` ikke er sat — produktion bør altid sætte dem så abonnementer overlever genstart.
-- **Opt-in modal** vises ved første login og styrer både email og push. Kan altid ændres fra profilen.
+- **Global chat room** with daily date separators and auto-scroll.
+- **Unread divider**: a "Nye beskeder" line appears before the first message the user hasn't read yet; the view scrolls to it on open instead of jumping to the bottom. The marker advances after a short dwell, on tab-hide, and on unmount.
+- **Live updates** via Server-Sent Events (`GET /api/v1/chat/stream`) — new messages stream in without a refresh. A 30-second safety-net poll takes over if the EventSource is broken.
+- **System notifications**: creating an event, adding a summerhouse link to one without, sign-up changes, creating/joining an activity, claiming a chore and closing an event all post a system message in chat with an icon and a deep link — plus fan-out to opt-in adults over **email** and **web push** (excluding the actor).
+- **Email notifications**: the DB outbox is always on; SMTP fires if `SMTP_HOST` is configured. Password-reset emails go through the same pipeline.
+- **Web push**: opt-in per device on `/profil`. A service worker (`/service-worker.js`) shows the notification and deep-links to the event. The backend auto-generates a VAPID keypair in dev when `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` aren't set — production must always set them so subscriptions survive restarts.
+- **Opt-in modal** on first login covers both email and push. Can be flipped at any time from the profile.
 
-### Feriehus-scrape
+### Summerhouse scraper
 
-- Host/admin kan trigge en BeautifulSoup-baseret scrape af feriehus-URL'en. Vi cacher titel, kort beskrivelse (Open Graph først, ellers `<h1>` + første lange `<p>`, med skip af generiske marketing-blurbs) og hero-billede direkte på eventet.
+- Host/admin can trigger a BeautifulSoup-based scrape of the summerhouse URL. We cache the title, a short description (Open Graph first, otherwise the `<h1>` + first long `<p>`, skipping generic marketing blurbs) and the hero image directly on the event.
 
 ### Look & feel
 
-- **Light/dark mode** (system default), mobil-first med både top-nav (desktop) og bottom-nav (mobil).
-- **Liquid-glass-æstetik**, sans-serif Geist, smooth framer-motion-animationer.
-- **Dansk overalt** — al copy lever i `frontend/src/i18n/da.ts`.
+- **Light/dark mode** (system default), mobile-first with both a top nav (desktop) and a bottom nav (mobile).
+- **Liquid-glass aesthetic**, the Geist sans-serif and smooth framer-motion animations.
 
 ## Stack
 
-| Lag       | Værktøj                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------- |
-| Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · Pydantic v2 · pytest                    |
-| DB        | PostgreSQL 16 (SQLite til lokale tests)                                                  |
-| Auth      | Selvhostet JWT i httpOnly-cookies (access 7d, refresh 30d), bcrypt                       |
-| Frontend  | Next.js 16 (App Router) · TypeScript · Tailwind v4 · shadcn/ui · TanStack Query · Vitest |
-| Test E2E  | Playwright (chromium)                                                                    |
-| Email     | DB-outbox + stdout · valgfri SMTP via `SMTP_HOST` m.fl.                                  |
-| Scrape    | httpx + BeautifulSoup (cache på eventet)                                                 |
-| Deploy    | Docker Compose (dev) · Docker Compose + Caddy (prod, auto-HTTPS)                         |
+| Layer    | Tool                                                                                     |
+| -------- | ---------------------------------------------------------------------------------------- |
+| Backend  | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · Pydantic v2 · pytest                    |
+| DB       | PostgreSQL 16 (SQLite for local tests)                                                   |
+| Auth     | Self-hosted JWT in httpOnly cookies (access 7d, refresh 30d), bcrypt                     |
+| Frontend | Next.js 16 (App Router) · TypeScript · Tailwind v4 · shadcn/ui · TanStack Query · Vitest |
+| E2E      | Playwright (chromium)                                                                    |
+| Email    | DB outbox + stdout · optional SMTP via `SMTP_HOST` and friends                           |
+| Push     | VAPID + `pywebpush` (backend) · service worker + `PushManager` (frontend)                |
+| Scrape   | httpx + BeautifulSoup (cached on the event)                                              |
+| Deploy   | Docker Compose (dev) · Docker Compose + Caddy (prod, automatic HTTPS)                    |
 
-## Hurtigstart (Docker)
+## Quick start (Docker)
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Når alt kører:
+Once everything is running:
 
 - Frontend: <http://localhost:3000>
-- Backend: <http://localhost:8000> (helbredstjek `/healthz`)
-- Adminer (DB-UI): <http://localhost:8080> (system: PostgreSQL, server: `db`)
+- Backend: <http://localhost:8000> (health check at `/healthz`)
+- Adminer (DB UI): <http://localhost:8080> (system: PostgreSQL, server: `db`)
 
-Frontend-containeren er bag profilen `docker-frontend`. I dagligt udviklingsarbejde kør den på værten med `npm run dev`. For at få den med op i Docker:
+The frontend container sits behind the `docker-frontend` profile. Day-to-day development runs the frontend on the host with `npm run dev`. To bring it up inside Docker:
 
 ```bash
 docker compose --profile docker-frontend up
 ```
 
-Standard admin-login (defineret i `.env.example`): `admin@karkov.example.com` / `change-me`. **Skift før du tager det i brug.**
+The default admin login (defined in `.env.example`) is `admin@karkov.example.com` / `change-me`. **Change it before using the app for anything real.**
 
-## Lokal udvikling uden Docker
+## Local development without Docker
 
 ### Backend
 
@@ -104,9 +102,9 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
-Kører som standard mod en lokal SQLite (`karkov.db`). Sæt `DATABASE_URL` for Postgres.
+Defaults to a local SQLite file (`karkov.db`). Set `DATABASE_URL` for Postgres.
 
-Test:
+Tests:
 
 ```bash
 uv run pytest -q
@@ -119,95 +117,45 @@ cd frontend
 npm install
 npm run dev          # localhost:3000
 npm test             # vitest unit tests
-npm run test:e2e     # playwright (kræver kørende stack)
-npm run lint         # eslint + react-hooks regler
+npm run test:e2e     # playwright (requires a running stack)
+npm run lint         # eslint + react-hooks rules
 ```
 
-## Konfiguration
+## Configuration
 
-Alt sættes via miljøvariabler. `.env.example` viser standardværdier for udvikling. Vigtige nøgler:
+Everything is configured through environment variables. `.env.example` shows the development defaults. The important keys:
 
-| Variabel                                        | Forklaring                                                                          |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                  | SQLAlchemy-URL. Default Postgres i Docker, SQLite ved lokal kørsel uden den.        |
-| `SECRET_KEY`                                    | JWT-signing nøgle. Min. 32 tegn i prod.                                             |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Bruges til at seede første admin-bruger.                                            |
-| `PUBLIC_BASE_URL`                               | Base-URL der bruges i invitations-emails.                                           |
-| `COOKIE_SECURE` / `COOKIE_SAMESITE`             | Cookie-flags (sæt `COOKIE_SECURE=true` i prod).                                     |
-| `CORS_ORIGINS`                                  | JSON-liste af tilladte origins.                                                     |
-| `SMTP_HOST` (+ port, user, pw, tls)             | Sættes hvis emails skal sendes rigtigt. Hvis tom skrives kun til outbox + stdout.   |
-| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY`        | Web-push-nøgler. Hvis tomme genereres et midlertidigt par i dev (taber abonnementer ved restart). |
-| `VAPID_SUBJECT`                                 | `mailto:` eller URL der identificerer afsenderen i push-headerne.                    |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`               | Frontend-nøgle. Sat: bruger Maps Embed API. Tom: keyless `?q=…&output=embed`.       |
+| Variable                                        | Meaning                                                                                            |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                  | SQLAlchemy URL. Defaults to Postgres in Docker, SQLite when running locally without it.            |
+| `SECRET_KEY`                                    | JWT signing key. At least 32 chars in production.                                                  |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Used to seed the first admin user.                                                                 |
+| `PUBLIC_BASE_URL`                               | Base URL used inside invite emails.                                                                |
+| `COOKIE_SECURE` / `COOKIE_SAMESITE`             | Cookie flags (set `COOKIE_SECURE=true` in production).                                             |
+| `CORS_ORIGINS`                                  | JSON list of allowed origins.                                                                      |
+| `SMTP_HOST` (+ port, user, password, TLS)       | Set if email should actually be delivered. If empty, messages only land in the outbox + stdout.    |
+| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY`        | Web-push keys. If empty, a temporary pair is generated in dev (subscriptions are lost on restart). |
+| `VAPID_SUBJECT`                                 | `mailto:` or URL identifying the sender in push headers.                                           |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`               | Frontend key. If set: uses the Maps Embed API. If empty: keyless `?q=…&output=embed`.              |
 
-## Produktion
+## Production
 
-`docker-compose.prod.yml` starter Postgres, backend, frontend og en Caddy reverse-proxy med automatisk Let's Encrypt:
+`docker-compose.prod.yml` brings up Postgres, the backend, the frontend and a Caddy reverse proxy with automatic Let's Encrypt:
 
 ```bash
 cp .env.example .env
-$EDITOR .env                  # sæt rigtige domæner, secrets, admin password, SMTP
-$EDITOR Caddyfile             # ændr karkov.example.com til dit domæne
+$EDITOR .env                  # real domain names, secrets, admin password, SMTP
+$EDITOR Caddyfile             # change karkov.example.com to your domain
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-## Ikke med endnu (deferred)
+## Not in this release (deferred)
 
-- Event-billed-upload + galleri (gruppe- og enkeltbilleder pr. event,
-  historisk dias-mode).
-- Bulk-import af tidligere events / billeder.
-- Backup / restore af databasen.
-- Auto-oprettelse af gruppefoto-event på den dag flest deltager.
-- Smartere chor-generering (første dag uden morgenmad, sidste dag uden
-  aftensmad, "assistent"-rolle).
-
----
-
-## English
-
-Karkov Weekend is a closed-group Danish family weekend planner: invite-only login, families, kids, multi-day events with auto-generated chores, activities, a fair shared budget with minimum cross-family settlement, a global chat room with system notifications, optional email + (future) push, and a summerhouse-page scraper.
-
-The full product spec lives in [`prompt.md`](./prompt.md).
-
-### Quick start
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Then open <http://localhost:3000> and sign in with the seeded admin (`ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`).
-
-### Architecture
-
-- `backend/` — FastAPI + SQLAlchemy 2 + Alembic. Pure-Python pricing/balance services with heavy unit tests (`tests/services/test_balance.py`, `test_pricing.py`). Notifications and email delivery are isolated behind small services (`services/notifications.py`, `services/email.py`).
-- `frontend/` — Next.js 16 App Router with TypeScript, Tailwind v4 and shadcn/ui. Server cookies + JWT, TanStack Query for fetching, framer-motion for animations.
-- `docker-compose.yml` — local stack (Postgres, backend, frontend behind a profile, Adminer).
-- `docker-compose.prod.yml` + `Caddyfile` — production stack with auto-HTTPS via Caddy.
-
-### Running tests
-
-```bash
-# Backend
-cd backend && uv run pytest -q
-
-# Frontend unit tests
-cd frontend && npm test
-
-# Playwright happy-path against a running stack
-cd frontend && npm run test:e2e
-```
-
-### Deferred
-
-Event photo upload/gallery, bulk import of past events/photos, database
-backup/restore, auto-generated group-photo events and smarter chor templates
-are deliberately left out of this release. Real password-reset emails,
-web-push notifications, live chat updates over SSE, family/child picture
-upload UI, and Maps API key integration are now shipped — see the "Recently
-shipped" subsection in [`prompt.md`](./prompt.md) for details.
-
----
+- Event photo upload + gallery (group and individual photos per event, historical slideshow mode).
+- Bulk import of past events / photos.
+- Database backup / restore.
+- Auto-creation of a group-photo activity on the day with the most attendees.
+- Smarter chore generation (first day without breakfast, last day without dinner, an "assistant" role).
 
 ## Repo layout
 
@@ -219,14 +167,16 @@ shipped" subsection in [`prompt.md`](./prompt.md) for details.
 │   │   ├── core/            # config, db, security, deps
 │   │   ├── models/          # SQLAlchemy ORM models
 │   │   ├── schemas/         # Pydantic models
-│   │   ├── services/        # pricing, balance, events_factory, email, notifications, scrape, uploads
+│   │   ├── services/        # pricing, balance, events_factory, email, notifications, scrape, uploads, push
 │   │   └── seeds.py
+│   ├── scripts/             # developer utilities (e.g. seed_event.py)
 │   ├── tests/               # pytest (api + services)
 │   └── alembic/
 ├── frontend/                # Next.js 16 app
+│   ├── public/              # service-worker.js, static assets
 │   ├── src/app/             # routes (auth + app shell, /chat, /arrangementer/[id], …)
 │   ├── src/components/      # UI + shadcn primitives + app-shell
-│   ├── src/lib/             # api client, auth, types, format, age, utils
+│   ├── src/lib/             # api client, auth, types, format, age, utils, push
 │   ├── src/i18n/da.ts       # all Danish copy
 │   └── e2e/                 # Playwright smoke
 ├── docker-compose.yml       # dev stack
