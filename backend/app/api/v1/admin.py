@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
+from app.core.config import get_settings
 from app.core.deps import CurrentUser, DbDep, require_admin
 from app.models.expense_category import ExpenseCategory
 from app.models.pricing_rules import PricingRules
+from app.models.email_outbox import EmailOutbox
+from app.services.email import deliver_via_smtp
 from app.services.family_io import (
     FamilyIOError,
     ImportSummary,
@@ -198,3 +201,66 @@ def import_families(payload: FamilyImportIn, db: DbDep) -> ImportSummary:
         return import_families_yaml(db, payload.yaml)
     except FamilyIOError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# ---- Email probe (admin) --------------------------------------------------
+
+
+class TestEmailIn(BaseModel):
+    to: EmailStr
+    subject: str = Field(default="Karkov Weekend SMTP test", min_length=1, max_length=200)
+    body: str = Field(
+        default=(
+            "Hej!\n\nDette er en SMTP-test fra Karkov Weekend. Hvis du modtager "
+            "denne mail, så er udsendelse konfigureret korrekt.\n"
+        ),
+        min_length=1,
+        max_length=4000,
+    )
+
+
+class TestEmailOut(BaseModel):
+    outbox_id: int
+    to: EmailStr
+    subject: str
+    smtp_attempted: bool
+    smtp_error: str | None = None
+
+
+@router.post(
+    "/admin/test-email",
+    response_model=TestEmailOut,
+    dependencies=[Depends(require_admin)],
+)
+def send_test_email(payload: TestEmailIn, db: DbDep) -> TestEmailOut:
+    """Send a probe email to verify SMTP is wired correctly.
+
+    Always writes an outbox row (so it shows up next to real notifications).
+    When `SMTP_HOST` is set we also fire the real SMTP delivery and surface
+    any error directly to the caller — the regular notification path swallows
+    SMTP errors, which is great for not breaking user requests but useless
+    for debugging credentials, ports or TLS.
+    """
+    # Write the outbox row up-front so the test message shows up alongside
+    # real notifications. Then deliver via SMTP exactly once (if configured),
+    # capturing the error for the caller instead of swallowing it like the
+    # background notification path does.
+    outbox = EmailOutbox(to=payload.to, subject=payload.subject, body=payload.body)
+    db.add(outbox)
+    db.commit()
+    db.refresh(outbox)
+    settings = get_settings()
+    smtp_attempted = bool(settings.smtp_host)
+    smtp_error: str | None = None
+    if smtp_attempted:
+        try:
+            deliver_via_smtp(to=payload.to, subject=payload.subject, body=payload.body)
+        except Exception as e:  # noqa: BLE001
+            smtp_error = f"{type(e).__name__}: {e}"
+    return TestEmailOut(
+        outbox_id=outbox.id,
+        to=payload.to,
+        subject=payload.subject,
+        smtp_attempted=smtp_attempted,
+        smtp_error=smtp_error,
+    )

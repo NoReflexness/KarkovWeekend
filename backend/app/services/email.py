@@ -40,30 +40,43 @@ class OutboxEmailSender:
         return msg
 
 
+def deliver_via_smtp(*, to: str, subject: str, body: str) -> None:
+    """Send a single message via the configured SMTP server and raise on failure.
+
+    Used by `SmtpEmailSender` (which swallows the error and logs it) and by the
+    admin `POST /admin/test-email` endpoint (which surfaces the error to the
+    caller so misconfigurations are immediately obvious instead of silently
+    being captured into the outbox).
+    """
+    settings = get_settings()
+    if not settings.smtp_host:
+        raise RuntimeError("SMTP_HOST is not configured")
+    message = EmailMessage()
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_address))
+    message["To"] = to
+    message["Subject"] = subject
+    message.set_content(body)
+    if settings.smtp_use_tls and not settings.smtp_starttls:
+        client_cls: type = smtplib.SMTP_SSL
+    else:
+        client_cls = smtplib.SMTP
+    with client_cls(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+        if settings.smtp_starttls and client_cls is smtplib.SMTP:
+            smtp.starttls()
+        if settings.smtp_username and settings.smtp_password:
+            smtp.login(settings.smtp_username, settings.smtp_password)
+        smtp.send_message(message)
+
+
 class SmtpEmailSender:
     """Outbox-first SMTP sender. Outbox row is always written; SMTP failure is logged."""
 
     def send(self, db: Session, *, to: str, subject: str, body: str) -> EmailOutbox:
         outbox = OutboxEmailSender().send(db, to=to, subject=subject, body=body)
-        settings = get_settings()
-        if not settings.smtp_host:
+        if not get_settings().smtp_host:
             return outbox
-        message = EmailMessage()
-        message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_address))
-        message["To"] = to
-        message["Subject"] = subject
-        message.set_content(body)
         try:
-            if settings.smtp_use_tls and not settings.smtp_starttls:
-                client_cls: type = smtplib.SMTP_SSL
-            else:
-                client_cls = smtplib.SMTP
-            with client_cls(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-                if settings.smtp_starttls and client_cls is smtplib.SMTP:
-                    smtp.starttls()
-                if settings.smtp_username and settings.smtp_password:
-                    smtp.login(settings.smtp_username, settings.smtp_password)
-                smtp.send_message(message)
+            deliver_via_smtp(to=to, subject=subject, body=body)
         except Exception:  # noqa: BLE001
             log.exception("SMTP send failed; outbox#%s retained", outbox.id)
         return outbox
