@@ -308,3 +308,53 @@ def test_list_expense_categories(client):
     assert r.status_code == 200
     names = [c["name"] for c in r.json()]
     assert {"Udlejning", "Forbrug", "Mad", "Aktiviteter", "Andet"} <= set(names)
+
+
+def test_admin_send_password_reset_emails_link(client):
+    """Admin triggers a password-reset email; the resulting token must work."""
+    _bootstrap_parent(client, email="reset.me@example.com", password="orig-pw-123")
+    client.post("/api/v1/auth/logout")
+
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    target = next(
+        u for u in client.get("/api/v1/users").json() if u["email"] == "reset.me@example.com"
+    )
+    r = client.post(f"/api/v1/users/{target['id']}/send-password-reset")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user_id"] == target["id"]
+    assert body["email"] == "reset.me@example.com"
+
+    last = client.get("/api/v1/_debug/last-email").json()
+    assert last["to"] == "reset.me@example.com"
+    assert "token=" in last["body"]
+    token = last["body"].split("token=")[1].splitlines()[0].strip()
+
+    client.post("/api/v1/auth/logout")
+    reset = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "fresh-pw-456"},
+    )
+    assert reset.status_code == 204
+    assert _login(client, "reset.me@example.com", "orig-pw-123").status_code == 401
+    assert _login(client, "reset.me@example.com", "fresh-pw-456").status_code == 200
+
+
+def test_admin_send_password_reset_non_admin_forbidden(client):
+    _bootstrap_parent(client, email="a@example.com")
+    me = client.get("/api/v1/auth/me").json()
+    r = client.post(f"/api/v1/users/{me['id']}/send-password-reset")
+    assert r.status_code == 403
+
+
+def test_admin_send_password_reset_missing_email_400(client):
+    """Children created without an email cannot be re-onboarded via email."""
+    _bootstrap_parent(client)
+    child = client.post(
+        "/api/v1/me/children", json={"name": "K", "birthdate": "2018-01-01"}
+    ).json()
+    client.post("/api/v1/auth/logout")
+
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    r = client.post(f"/api/v1/users/{child['id']}/send-password-reset")
+    assert r.status_code == 400

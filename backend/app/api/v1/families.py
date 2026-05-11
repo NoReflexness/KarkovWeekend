@@ -183,7 +183,6 @@ def send_pending_invites(family_id: int, db: DbDep) -> InviteSendResult:
         .filter(
             InviteToken.family_id == family_id,
             InviteToken.used_at.is_(None),
-            InviteToken.notified_at.is_(None),
         )
         .all()
     )

@@ -156,8 +156,33 @@ def test_send_pending_invites_marks_notified(client):
     body = res.json()
     assert body["sent"] == 2
 
+    # Bulk resend now ignores `notified_at` so admins can re-batch after the
+    # first delivery silently failed (e.g. SMTP misconfigured). All non-used
+    # invites should be resent every call.
     again = client.post(f"/api/v1/families/{fid}/invites/send-pending").json()
-    assert again["sent"] == 0
+    assert again["sent"] == 2
+
+
+def test_send_pending_skips_used_invites(client):
+    """Used tokens are burned; bulk send must not retry them."""
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    fid = client.post("/api/v1/families", json={"name": "Mixed"}).json()["id"]
+    used_inv = client.post(
+        f"/api/v1/families/{fid}/invites", json={"email": "used@example.com"}
+    ).json()
+    client.post(f"/api/v1/families/{fid}/invites", json={"email": "fresh@example.com"})
+
+    # Burn the first token.
+    client.post("/api/v1/auth/logout")
+    client.post(
+        "/api/v1/auth/register",
+        json={"token": used_inv["token"], "name": "U", "password": "password123"},
+    )
+    _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+    res = client.post(f"/api/v1/families/{fid}/invites/send-pending").json()
+    assert res["sent"] == 1
+    assert res["invites"][0]["email"] == "fresh@example.com"
 
 
 def test_invite_with_notify_true_sends_email(client):

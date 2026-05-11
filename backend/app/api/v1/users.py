@@ -1,9 +1,14 @@
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from datetime import timedelta
 
+from fastapi import APIRouter, HTTPException, UploadFile, status
+from pydantic import BaseModel, EmailStr
+
+from app.core.config import get_settings
 from app.core.deps import CurrentUser, DbDep
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, now_utc, random_token, verify_password
 from app.models.expense import Expense
 from app.models.family import Family
+from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User, UserRole
 from app.schemas.auth import UserOut
 from app.schemas.user import (
@@ -13,6 +18,7 @@ from app.schemas.user import (
     RoleUpdate,
     UserUpdate,
 )
+from app.services.email import get_email_sender
 from app.services.uploads import save_profile_picture
 
 router = APIRouter(tags=["users"])
@@ -199,6 +205,66 @@ def update_user_role(
     db.commit()
     db.refresh(target)
     return UserOut.model_validate(target)
+
+
+class SendPasswordResetOut(BaseModel):
+    user_id: int
+    email: EmailStr
+    expires_at: str
+
+
+@router.post(
+    "/users/{user_id}/send-password-reset",
+    response_model=SendPasswordResetOut,
+)
+def admin_send_password_reset(
+    user_id: int, db: DbDep, user: CurrentUser
+) -> SendPasswordResetOut:
+    """Admin: trigger a password-reset email for any user.
+
+    Mirrors the self-service `/auth/forgot-password` flow but is non-enumerating
+    only because the admin already knows the user exists. Lets admins recover
+    or re-onboard a user without having to ask the user to click "forgot
+    password" themselves. Always issues a fresh token regardless of any
+    previous unused tokens; older tokens remain technically valid until they
+    expire on their own.
+    """
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Kun admin")
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Bruger findes ikke")
+    if not target.email:
+        raise HTTPException(
+            status_code=400,
+            detail="Brugeren har ingen email og kan ikke modtage et nulstillingslink",
+        )
+
+    token = random_token()
+    expires_at = now_utc() + timedelta(hours=24)
+    prt = PasswordResetToken(
+        token=token,
+        user_id=target.id,
+        expires_at=expires_at,
+    )
+    db.add(prt)
+    settings = get_settings()
+    body = (
+        "Hej {name},\n\nEn administrator har bedt om at nulstille din adgangskode "
+        "til Karkov Weekend.\n\nKlik for at vælge en ny adgangskode:\n"
+        "{base}/nulstil-adgangskode?token={token}\n\n"
+        "Linket udløber om 24 timer."
+    ).format(name=target.name, base=settings.public_base_url, token=token)
+    get_email_sender().send(
+        db, to=target.email, subject="Nulstil din adgangskode", body=body
+    )
+    db.commit()
+    db.refresh(prt)
+    return SendPasswordResetOut(
+        user_id=target.id,
+        email=target.email,
+        expires_at=prt.expires_at.isoformat(),
+    )
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

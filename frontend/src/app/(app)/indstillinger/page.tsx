@@ -20,6 +20,7 @@ import {
   Link2,
   AlertTriangle,
   RefreshCw,
+  KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,6 +44,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   EditChildDialog,
   EditFamilyDialog,
+  EditParentDialog,
 } from "@/components/admin-edit-dialogs";
 import {
   Dialog,
@@ -315,7 +317,7 @@ function FamilyAdminCard({
     queryFn: () => api.get<Invite[]>(`/families/${family.id}/invites`),
   });
   const pending = pendingInvites ?? [];
-  const unsentCount = pending.filter((i) => !i.notified_at).length;
+  const unsentCount = pending.length;
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["families"] });
@@ -357,6 +359,16 @@ function FamilyAdminCard({
       toast.success(da.family.resentToast);
       invalidateAll();
     },
+    onError: (e) => e instanceof ApiError && toast.error(e.message),
+  });
+
+  const sendPasswordReset = useMutation({
+    mutationFn: (id: number) =>
+      api.post<{ user_id: number; email: string; expires_at: string }>(
+        `/users/${id}/send-password-reset`,
+        {},
+      ),
+    onSuccess: () => toast.success(da.family.resetLinkSentToast),
     onError: (e) => e instanceof ApiError && toast.error(e.message),
   });
 
@@ -615,6 +627,34 @@ function FamilyAdminCard({
                   </p>
                   <p className="text-muted-foreground text-xs truncate">{m.email ?? "—"}</p>
                 </div>
+                <EditParentDialog
+                  user={m}
+                  trigger={
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      title={da.family.editParent}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                  }
+                />
+                <ConfirmDialog
+                  trigger={
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      title={da.family.sendPasswordReset}
+                      disabled={sendPasswordReset.isPending || !m.email}
+                    >
+                      <KeyRound className="size-4" />
+                    </Button>
+                  }
+                  title={da.family.sendPasswordResetConfirmTitle(m.name)}
+                  description={da.family.sendPasswordResetConfirmBody(m.email ?? "")}
+                  confirmLabel={da.family.sendPasswordReset}
+                  onConfirm={() => sendPasswordReset.mutateAsync(m.id)}
+                />
                 <Button
                   size="icon-sm"
                   variant="ghost"

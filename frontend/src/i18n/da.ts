@@ -163,9 +163,9 @@ export const da = {
     inviteCopyHint: "Send dette link til den nye forælder, hvis email ikke virker:",
     pendingInvitations: "Afventende invitationer",
     pendingNote: "Disse forældre er forberedt men har endnu ikke modtaget link.",
-    sendAll: "Send alle invitationer",
+    sendAll: "Send/genudsend alle",
     sentToast: (n: number) =>
-      n === 0 ? "Ingen nye invitationer at sende" : `${n} invitation${n === 1 ? "" : "er"} sendt`,
+      n === 0 ? "Ingen invitationer at sende" : `${n} invitation${n === 1 ? "" : "er"} sendt`,
     cancelInvite: "Annullér",
     resendInvite: "Send invitationen igen",
     resentToast: "Invitation sendt igen",
@@ -189,6 +189,11 @@ export const da = {
     childDeletedToast: "Barn slettet",
     editParent: "Rediger bruger",
     editParentTitle: (name: string) => `Rediger ${name}`,
+    sendPasswordReset: "Send link til ny adgangskode",
+    sendPasswordResetConfirmTitle: (name: string) => `Send nulstillingslink til ${name}?`,
+    sendPasswordResetConfirmBody: (email: string) =>
+      `Vi sender et nulstillingslink til ${email}. Linket er gyldigt i 24 timer og brugeren kan herefter vælge en ny adgangskode.`,
+    resetLinkSentToast: "Nulstillingslink sendt",
     editChild: "Rediger barn",
     editChildTitle: (name: string) => `Rediger ${name}`,
     editFamily: "Rediger familie",
